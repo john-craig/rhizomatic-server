@@ -9,6 +9,7 @@ It provides:
 - A lightweight web UI for creating, editing, browsing, deleting, and searching themagraphs
 - SQLite persistence so the dataset can live independently from vault markdown files
 - API-token authentication for the JSON API, configured from a server-side config file
+- A stdio-based MCP server executable that exposes the HTTP API as MCP tools
 
 ## Why this exists
 
@@ -53,6 +54,32 @@ Config file fields:
 Then open `http://127.0.0.1:3000`.
 
 The web UI routes are intentionally unauthenticated. Only `/api/*` requires a token.
+
+## MCP Server
+
+This project also provides a second executable:
+
+```sh
+cargo run --bin rhizomatic-mcp-server -- --server-url http://127.0.0.1:3000
+```
+
+It runs as an stdio MCP server and exposes these tools:
+
+- `rhizomatic_api_health`
+- `list_themagraphs`
+- `get_themagraph`
+- `create_themagraph`
+- `update_themagraph`
+- `delete_themagraph`
+- `query_themagraphs`
+
+Each tool accepts an `api_token_file` parameter. The file should contain the same API token configured in `config.toml`.
+
+Example token file:
+
+```sh
+printf '%s\n' 'replace-with-a-long-random-token' > /tmp/rhizomatic-server.token
+```
 
 ## API
 

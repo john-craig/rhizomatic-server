@@ -11,27 +11,27 @@ pub struct Themagraph {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateThemagraph {
     pub body: String,
     #[serde(default)]
     pub links: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpdateThemagraph {
     pub body: String,
     #[serde(default)]
     pub links: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResponse {
     pub query: String,
     pub matches: Vec<Themagraph>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct QueryRequest {
     pub query: String,
 }
