@@ -1,0 +1,3 @@
+bind_address = "127.0.0.1:3000"
+database_url = "sqlite:rhizomatic-server.db?mode=rwc"
+api_token = "replace-with-a-long-random-token"

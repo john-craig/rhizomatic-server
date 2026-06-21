@@ -1,5 +1,5 @@
-use rhizomatic_server::{store::Store, web::serve};
-use std::{env, net::SocketAddr};
+use rhizomatic_server::{config::Config, store::Store, web::serve};
+use std::{env, path::PathBuf};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
@@ -11,13 +11,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:rhizomatic-server.db?mode=rwc".to_owned());
-    let bind_address: SocketAddr = env::var("BIND_ADDRESS")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
-        .parse()?;
+    let config_path = parse_config_path(env::args_os())?;
+    let config = Config::from_file(&config_path)?;
 
-    let store = Store::new(&database_url).await?;
-    serve(store, bind_address).await?;
+    let store = Store::new(&config.database_url).await?;
+    serve(store, config).await?;
     Ok(())
+}
+
+fn parse_config_path(
+    mut args: impl Iterator<Item = impl Into<std::ffi::OsString>>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let _program = args.next();
+    let Some(flag) = args.next() else {
+        return Err("usage: rhizomatic-server --config <path-to-config.toml>".into());
+    };
+    let flag = PathBuf::from(flag.into());
+    if flag != PathBuf::from("--config") {
+        return Err("usage: rhizomatic-server --config <path-to-config.toml>".into());
+    }
+    let Some(path) = args.next() else {
+        return Err("missing config path after --config".into());
+    };
+    Ok(PathBuf::from(path.into()))
 }

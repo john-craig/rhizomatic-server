@@ -8,6 +8,7 @@ It provides:
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
 - A lightweight web UI for creating, editing, browsing, deleting, and searching themagraphs
 - SQLite persistence so the dataset can live independently from vault markdown files
+- API-token authentication for the JSON API, configured from a server-side config file
 
 ## Why this exists
 
@@ -34,22 +35,34 @@ Each themagraph stores:
 ## Running
 
 ```sh
-cargo run
+cargo run -- --config ./config.toml
 ```
 
-Defaults:
+Create `config.toml` from the example:
 
-- `BIND_ADDRESS=127.0.0.1:3000`
-- `DATABASE_URL=sqlite:rhizomatic-server.db?mode=rwc`
+```sh
+cp config.example.toml config.toml
+```
+
+Config file fields:
+
+- `bind_address`
+- `database_url`
+- `api_token`
 
 Then open `http://127.0.0.1:3000`.
 
+The web UI routes are intentionally unauthenticated. Only `/api/*` requires a token.
+
 ## API
+
+Supply the token either as `Authorization: Bearer <token>` or `X-API-Token: <token>`.
 
 ### Create
 
 ```sh
 curl -X POST http://127.0.0.1:3000/api/themagraphs \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
   -H 'content-type: application/json' \
   -d '{
     "body": "Building [[programming rhizomatic server]] for [[rhizomatic]] themagraph CRUD.",
@@ -60,13 +73,17 @@ curl -X POST http://127.0.0.1:3000/api/themagraphs \
 ### List
 
 ```sh
-curl http://127.0.0.1:3000/api/themagraphs
+curl \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  http://127.0.0.1:3000/api/themagraphs
 ```
 
 ### Query
 
 ```sh
-curl 'http://127.0.0.1:3000/api/query?query=%5B%5Bprogramming%20rhizomatic%20server%5D%5D%20%26%26%20%5B%5Brhizomatic%5D%5D'
+curl \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  'http://127.0.0.1:3000/api/query?query=%5B%5Bprogramming%20rhizomatic%20server%5D%5D%20%26%26%20%5B%5Brhizomatic%5D%5D'
 ```
 
 ## Notes on compatibility

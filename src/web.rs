@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::models::{
     CreateThemagraph, DetailTemplate, IndexTemplate, QueryRequest, QueryResponse, SearchParams,
     SearchResult, ThemagraphForm, UpdateThemagraph,
@@ -8,7 +9,8 @@ use askama::Template;
 use axum::{
     Form, Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{StatusCode, header},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -20,10 +22,15 @@ use tracing::info;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
+    pub api_token: String,
 }
 
-pub async fn serve(store: Store, bind_address: SocketAddr) -> Result<(), std::io::Error> {
-    let state = Arc::new(AppState { store });
+pub async fn serve(store: Store, config: Config) -> Result<(), std::io::Error> {
+    let bind_address: SocketAddr = config.bind_address;
+    let state = Arc::new(AppState {
+        store,
+        api_token: config.api_token,
+    });
     let app = router(state);
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
     info!("listening on http://{bind_address}");
@@ -31,30 +38,67 @@ pub async fn serve(store: Store, bind_address: SocketAddr) -> Result<(), std::io
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let api = Router::new()
+        .route("/health", get(health))
+        .route(
+            "/themagraphs",
+            get(list_themagraphs).post(create_themagraph),
+        )
+        .route(
+            "/themagraphs/{id}",
+            get(get_themagraph)
+                .put(update_themagraph)
+                .delete(delete_themagraph),
+        )
+        .route(
+            "/query",
+            get(query_themagraphs).post(query_themagraphs_post),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_token,
+        ));
+
     Router::new()
         .route("/", get(index))
         .route("/themagraphs/{id}", get(detail))
         .route("/ui/themagraphs", post(create_from_form))
         .route("/ui/themagraphs/{id}", post(update_from_form))
         .route("/ui/themagraphs/{id}/delete", post(delete_from_form))
-        .route("/api/health", get(health))
-        .route(
-            "/api/themagraphs",
-            get(list_themagraphs).post(create_themagraph),
-        )
-        .route(
-            "/api/themagraphs/{id}",
-            get(get_themagraph)
-                .put(update_themagraph)
-                .delete(delete_themagraph),
-        )
-        .route(
-            "/api/query",
-            get(query_themagraphs).post(query_themagraphs_post),
-        )
+        .nest("/api", api)
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn require_api_token(
+    State(state): State<Arc<AppState>>,
+    request: axum::extract::Request,
+    next: Next,
+) -> Response {
+    let bearer = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_bearer_token);
+    let header_token = request
+        .headers()
+        .get("x-api-token")
+        .and_then(|value| value.to_str().ok());
+
+    let provided = bearer.or(header_token);
+    if provided == Some(state.api_token.as_str()) {
+        return next.run(request).await;
+    }
+
+    AppError::Unauthorized("missing or invalid API token".to_owned()).into_response()
+}
+
+fn parse_bearer_token(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -244,6 +288,7 @@ fn render_template(template: impl Template) -> Result<Html<String>, AppError> {
 pub enum AppError {
     NotFound(String),
     BadRequest(String),
+    Unauthorized(String),
     Internal(String),
 }
 
@@ -258,15 +303,22 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
             Self::Internal(message) => (StatusCode::INTERNAL_SERVER_ERROR, message),
         };
-
-        (
+        let mut response = (
             status,
             Json(json!({
                 "error": message,
             })),
         )
-            .into_response()
+            .into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                header::HeaderValue::from_static("Bearer"),
+            );
+        }
+        response
     }
 }
