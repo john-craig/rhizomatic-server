@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rhizomatic Server</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Rust + SQLite</p>
+        <h1>Rhizomatic Themagraph Server</h1>
+        <p class="lede">
+          Store themagraphs, manage intralinks, and run rhizomatic queries from a browser or JSON API.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Query</h2>
+        <form method="get" action="/" class="stack">
+          <label for="query">Rhizomatic query</label>
+          <input
+            id="query"
+            name="query"
+            type="text"
+            value="{{ query }}"
+            placeholder="[[project]] && ([[rust]] || *[[meta]])"
+          />
+          <button type="submit">Search</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Create Themagraph</h2>
+        <form method="post" action="/ui/themagraphs" class="stack">
+          <label for="body">Body</label>
+          <textarea id="body" name="body" rows="8" placeholder="Write the themagraph body here."></textarea>
+          <label for="links">Links</label>
+          <input id="links" name="links" type="text" placeholder="programming rhizomatic server, rhizomatic" />
+          <button type="submit">Create</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Themagraphs</h2>
+          <span>{{ total_themagraphs }} shown</span>
+        </div>
+        <div class="cards">
+          {% for result in themagraphs %}
+          <article class="card">
+            <div class="card-header">
+              <a href="/themagraphs/{{ result.themagraph.id }}">{{ result.themagraph.id }}</a>
+              {% if result.matched_by_query %}
+              <span class="badge">match</span>
+              {% endif %}
+            </div>
+            <p>{{ result.themagraph.body }}</p>
+            <div class="tags">
+              {% for link in result.themagraph.links %}
+              <span>[[{{ link }}]]</span>
+              {% endfor %}
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

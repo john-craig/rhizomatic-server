@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ themagraph.id }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero compact">
+        <p class="eyebrow">Themagraph</p>
+        <h1>{{ themagraph.id }}</h1>
+        <p class="lede">Created {{ themagraph.created_at }}. Updated {{ themagraph.updated_at }}.</p>
+        <p><a href="/">Back to search</a></p>
+      </section>
+
+      <section class="panel">
+        <h2>Edit</h2>
+        <form method="post" action="/ui/themagraphs/{{ themagraph.id }}" class="stack">
+          <label for="body">Body</label>
+          <textarea id="body" name="body" rows="12">{{ themagraph.body }}</textarea>
+          <label for="links">Links</label>
+          <input id="links" name="links" type="text" value="{{ links_text }}" />
+          <button type="submit">Save</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Delete</h2>
+        <form method="post" action="/ui/themagraphs/{{ themagraph.id }}/delete">
+          <button type="submit" class="danger">Delete themagraph</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

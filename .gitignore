@@ -1,0 +1,9 @@
+
+
+# Added by cargo
+
+target/
+.env
+*.db
+*.db-shm
+*.db-wal
