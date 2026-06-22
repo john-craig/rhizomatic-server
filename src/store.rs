@@ -1,4 +1,4 @@
-use crate::models::{CreateThemagraph, Themagraph, UpdateThemagraph};
+use crate::models::{CreateTag, CreateThemagraph, Tag, Themagraph, UpdateThemagraph};
 use crate::query::merge_links;
 use chrono::{DateTime, Utc};
 use sqlx::{Row, SqlitePool};
@@ -36,6 +36,11 @@ impl Store {
                 link TEXT NOT NULL,
                 PRIMARY KEY (themagraph_id, link),
                 FOREIGN KEY (themagraph_id) REFERENCES themagraphs(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS tags (
+                name TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
             );
             "#,
         )
@@ -108,6 +113,59 @@ impl Store {
             .ok_or(sqlx::Error::RowNotFound)
     }
 
+    pub async fn list_tags(&self) -> Result<Vec<Tag>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT name, created_at
+            FROM tags
+            ORDER BY name COLLATE NOCASE ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(Tag {
+                    name: row.try_get("name")?,
+                    created_at: parse_timestamp(row.try_get::<String, _>("created_at")?),
+                })
+            })
+            .collect()
+    }
+
+    pub async fn create_tag(&self, payload: CreateTag) -> Result<Tag, sqlx::Error> {
+        let name = payload.name.trim().to_owned();
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO tags (name, created_at)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(&name)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        let row = sqlx::query(
+            r#"
+            SELECT name, created_at
+            FROM tags
+            WHERE name = ?
+            "#,
+        )
+        .bind(&name)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(Tag {
+            name: row.try_get("name")?,
+            created_at: parse_timestamp(row.try_get::<String, _>("created_at")?),
+        })
+    }
+
     pub async fn update_themagraph(
         &self,
         id: &str,
@@ -152,6 +210,7 @@ impl Store {
             .await?;
 
         for link in links {
+            self.ensure_tag_exists_with_tx(&mut tx, link).await?;
             sqlx::query(
                 r#"
                 INSERT INTO themagraph_links (themagraph_id, link)
@@ -164,6 +223,24 @@ impl Store {
             .await?;
         }
         tx.commit().await?;
+        Ok(())
+    }
+
+    async fn ensure_tag_exists_with_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        name: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO tags (name, created_at)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(name)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut **tx)
+        .await?;
         Ok(())
     }
 

@@ -68,10 +68,17 @@ It runs as an stdio MCP server and exposes these tools:
 - `rhizomatic_api_health`
 - `list_themagraphs`
 - `get_themagraph`
+- `get_themagraph_by_uuid`
 - `create_themagraph`
 - `update_themagraph`
+- `modify_themagraph`
 - `delete_themagraph`
 - `query_themagraphs`
+- `query_themagraphs_rhizomatic`
+- `query_themagraphs_regex`
+- `list_tags`
+- `query_tags_regex`
+- `create_tag`
 
 Each tool accepts an `api_token_file` parameter. The file should contain the same API token configured in `config.toml`.
 
@@ -111,6 +118,50 @@ curl \
 curl \
   -H 'authorization: Bearer replace-with-a-long-random-token' \
   'http://127.0.0.1:3000/api/query?query=%5B%5Bprogramming%20rhizomatic%20server%5D%5D%20%26%26%20%5B%5Brhizomatic%5D%5D'
+```
+
+### Regex Query
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/query/regex \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{
+    "pattern": "rhizomatic",
+    "case_insensitive": true,
+    "target": "any"
+  }'
+```
+
+### Tags
+
+List tags:
+
+```sh
+curl \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  http://127.0.0.1:3000/api/tags
+```
+
+Create a tag:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/tags \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{"name":"programming rhizomatic server"}'
+```
+
+Regex-filter tags:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/tags/query/regex \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{
+    "pattern": "^programming",
+    "case_insensitive": true
+  }'
 ```
 
 ## Notes on compatibility

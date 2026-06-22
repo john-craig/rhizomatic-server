@@ -1,5 +1,5 @@
 use crate::models::Themagraph;
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,6 +148,48 @@ pub fn filter_themagraphs<'a>(themagraphs: &'a [Themagraph], query: &str) -> Vec
     }
 }
 
+pub fn regex_filter_themagraphs<'a>(
+    themagraphs: &'a [Themagraph],
+    pattern: &str,
+    case_insensitive: bool,
+    target: Option<&str>,
+) -> Result<Vec<&'a Themagraph>, QueryError> {
+    let regex = RegexBuilder::new(pattern)
+        .case_insensitive(case_insensitive)
+        .build()
+        .map_err(|error| QueryError {
+            message: format!("invalid regex pattern: {error}"),
+        })?;
+
+    Ok(themagraphs
+        .iter()
+        .filter(|themagraph| match target.unwrap_or("any") {
+            "body" => regex.is_match(&themagraph.body),
+            "links" => themagraph.links.iter().any(|link| regex.is_match(link)),
+            "any" => {
+                regex.is_match(&themagraph.body)
+                    || themagraph.links.iter().any(|link| regex.is_match(link))
+            }
+            _ => false,
+        })
+        .collect())
+}
+
+pub fn regex_filter_tags<'a>(
+    tags: &'a [String],
+    pattern: &str,
+    case_insensitive: bool,
+) -> Result<Vec<&'a String>, QueryError> {
+    let regex = RegexBuilder::new(pattern)
+        .case_insensitive(case_insensitive)
+        .build()
+        .map_err(|error| QueryError {
+            message: format!("invalid regex pattern: {error}"),
+        })?;
+
+    Ok(tags.iter().filter(|tag| regex.is_match(tag)).collect())
+}
+
 fn tokenize(input: &str) -> Vec<String> {
     static TOKEN_RE: OnceLock<Regex> = OnceLock::new();
     TOKEN_RE
@@ -277,6 +319,7 @@ fn evaluate_node(
 mod tests {
     use super::{
         extract_intralinks_from_text, filter_themagraphs, normalize_link_text, parse_query,
+        regex_filter_tags, regex_filter_themagraphs,
     };
     use crate::models::Themagraph;
     use chrono::Utc;
@@ -339,5 +382,40 @@ mod tests {
     fn extracts_body_links() {
         let links = extract_intralinks_from_text("see [[alpha]] and [[beta|Beta]]");
         assert_eq!(links, vec!["alpha".to_owned(), "beta".to_owned()]);
+    }
+
+    #[test]
+    fn regex_filters_themagraph_body_and_links() {
+        let themagraphs = vec![
+            tg("1", "Body about rust", &["alpha"]),
+            tg("2", "Elsewhere", &["rust-tag"]),
+        ];
+        assert_eq!(
+            regex_filter_themagraphs(&themagraphs, "rust", true, Some("body"))
+                .expect("regex should compile")
+                .len(),
+            1
+        );
+        assert_eq!(
+            regex_filter_themagraphs(&themagraphs, "rust", true, Some("links"))
+                .expect("regex should compile")
+                .len(),
+            1
+        );
+        assert_eq!(
+            regex_filter_themagraphs(&themagraphs, "rust", true, Some("any"))
+                .expect("regex should compile")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn regex_filters_tags() {
+        let tags = vec!["alpha".to_owned(), "rust-tag".to_owned()];
+        let matches =
+            regex_filter_tags(&tags, "^rust", true).expect("regex should compile successfully");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].as_str(), "rust-tag");
     }
 }

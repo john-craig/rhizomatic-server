@@ -1,9 +1,9 @@
 use crate::config::Config;
 use crate::models::{
-    CreateThemagraph, DetailTemplate, IndexTemplate, QueryRequest, QueryResponse, SearchParams,
-    SearchResult, ThemagraphForm, UpdateThemagraph,
+    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, QueryRequest, QueryResponse,
+    RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
 };
-use crate::query::filter_themagraphs;
+use crate::query::{filter_themagraphs, regex_filter_tags, regex_filter_themagraphs};
 use crate::store::Store;
 use askama::Template;
 use axum::{
@@ -54,6 +54,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/query",
             get(query_themagraphs).post(query_themagraphs_post),
         )
+        .route("/query/regex", post(query_themagraphs_regex))
+        .route("/themagraphs/uuid/{id}", get(get_themagraph_by_uuid))
+        .route("/tags", get(list_tags).post(create_tag))
+        .route("/tags/query/regex", post(query_tags_regex))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_api_token,
@@ -223,12 +227,42 @@ async fn get_themagraph(
     Ok(Json(themagraph))
 }
 
+async fn get_themagraph_by_uuid(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::models::Themagraph>, AppError> {
+    get_themagraph(State(state), Path(id)).await
+}
+
 async fn create_themagraph(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateThemagraph>,
 ) -> Result<(StatusCode, Json<crate::models::Themagraph>), AppError> {
     let themagraph = state.store.create_themagraph(payload).await?;
     Ok((StatusCode::CREATED, Json(themagraph)))
+}
+
+async fn list_tags(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Tag>>, AppError> {
+    Ok(Json(state.store.list_tags().await?))
+}
+
+async fn create_tag(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CreateTag>,
+) -> Result<(StatusCode, Json<Tag>), AppError> {
+    let name = payload.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest(
+            "tag name must not be empty".to_owned(),
+        ));
+    }
+    let tag = state
+        .store
+        .create_tag(CreateTag {
+            name: name.to_owned(),
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(tag)))
 }
 
 async fn update_themagraph(
@@ -266,6 +300,54 @@ async fn query_themagraphs_post(
     Json(payload): Json<QueryRequest>,
 ) -> Result<Json<QueryResponse>, AppError> {
     run_query(&state.store, payload.query).await
+}
+
+async fn query_themagraphs_regex(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RegexQueryRequest>,
+) -> Result<Json<QueryResponse>, AppError> {
+    let target = payload.target.as_deref().unwrap_or("any");
+    if !matches!(target, "any" | "body" | "links") {
+        return Err(AppError::BadRequest(
+            "regex query target must be one of: any, body, links".to_owned(),
+        ));
+    }
+
+    let themagraphs = state.store.list_themagraphs().await?;
+    let matches = regex_filter_themagraphs(
+        &themagraphs,
+        &payload.pattern,
+        payload.case_insensitive,
+        Some(target),
+    )
+    .map_err(|error| AppError::BadRequest(error.message))?
+    .into_iter()
+    .cloned()
+    .collect();
+
+    Ok(Json(QueryResponse {
+        query: payload.pattern,
+        matches,
+    }))
+}
+
+async fn query_tags_regex(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RegexQueryRequest>,
+) -> Result<Json<Vec<Tag>>, AppError> {
+    let tags = state.store.list_tags().await?;
+    let tag_names = tags.iter().map(|tag| tag.name.clone()).collect::<Vec<_>>();
+    let matched_names = regex_filter_tags(&tag_names, &payload.pattern, payload.case_insensitive)
+        .map_err(|error| AppError::BadRequest(error.message))?
+        .into_iter()
+        .map(|tag| tag.as_str())
+        .collect::<std::collections::HashSet<_>>();
+
+    Ok(Json(
+        tags.into_iter()
+            .filter(|tag| matched_names.contains(tag.name.as_str()))
+            .collect(),
+    ))
 }
 
 async fn run_query(store: &Store, query: String) -> Result<Json<QueryResponse>, AppError> {

@@ -8,7 +8,7 @@ askama = "0.12"
 axum = { version = "0.8", features = ["form", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rmcp = { version = "1.7", features = ["transport-io"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }

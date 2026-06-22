@@ -1,6 +1,6 @@
 use rhizomatic_server::{
     mcp_client::RhizomaticApiClient,
-    models::{CreateThemagraph, UpdateThemagraph},
+    models::{CreateTag, CreateThemagraph, RegexQueryRequest, UpdateThemagraph},
 };
 use rmcp::{ServiceExt, handler::server::wrapper::Parameters, tool, tool_router, transport::stdio};
 use schemars::JsonSchema;
@@ -59,6 +59,39 @@ struct QueryThemagraphsParams {
     query: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RegexQueryThemagraphsParams {
+    /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
+    api_token_file: String,
+    /// Regular expression pattern to match.
+    pattern: String,
+    /// Whether to ignore case while matching.
+    #[serde(default)]
+    case_insensitive: bool,
+    /// Matching target: any, body, or links.
+    #[serde(default)]
+    target: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RegexQueryTagsParams {
+    /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
+    api_token_file: String,
+    /// Regular expression pattern to match.
+    pattern: String,
+    /// Whether to ignore case while matching.
+    #[serde(default)]
+    case_insensitive: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CreateTagParams {
+    /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
+    api_token_file: String,
+    /// Tag name to create.
+    name: String,
+}
+
 #[tool_router(server_handler)]
 impl RhizomaticMcpServer {
     #[tool(
@@ -98,6 +131,21 @@ impl RhizomaticMcpServer {
         let themagraph = self
             .api
             .get_themagraph(params.api_token_file, &params.id)
+            .await?;
+        to_json_string(themagraph)
+    }
+
+    #[tool(
+        name = "get_themagraph_by_uuid",
+        description = "Fetch a single themagraph by UUID from the rhizomatic HTTP API."
+    )]
+    async fn get_themagraph_by_uuid(
+        &self,
+        Parameters(params): Parameters<GetThemagraphParams>,
+    ) -> Result<String, String> {
+        let themagraph = self
+            .api
+            .get_themagraph_by_uuid(params.api_token_file, &params.id)
             .await?;
         to_json_string(themagraph)
     }
@@ -146,6 +194,17 @@ impl RhizomaticMcpServer {
     }
 
     #[tool(
+        name = "modify_themagraph",
+        description = "Modify an existing themagraph through the rhizomatic HTTP API."
+    )]
+    async fn modify_themagraph(
+        &self,
+        Parameters(params): Parameters<UpdateThemagraphParams>,
+    ) -> Result<String, String> {
+        self.update_themagraph(Parameters(params)).await
+    }
+
+    #[tool(
         name = "delete_themagraph",
         description = "Delete a themagraph through the rhizomatic HTTP API."
     )]
@@ -173,6 +232,88 @@ impl RhizomaticMcpServer {
             .query_themagraphs(params.api_token_file, &params.query)
             .await?;
         to_json_string(response)
+    }
+
+    #[tool(
+        name = "query_themagraphs_rhizomatic",
+        description = "Run a rhizomatic query against themagraphs through the rhizomatic HTTP API."
+    )]
+    async fn query_themagraphs_rhizomatic(
+        &self,
+        Parameters(params): Parameters<QueryThemagraphsParams>,
+    ) -> Result<String, String> {
+        self.query_themagraphs(Parameters(params)).await
+    }
+
+    #[tool(
+        name = "query_themagraphs_regex",
+        description = "Run a regular expression query against themagraph bodies and/or links through the rhizomatic HTTP API."
+    )]
+    async fn query_themagraphs_regex(
+        &self,
+        Parameters(params): Parameters<RegexQueryThemagraphsParams>,
+    ) -> Result<String, String> {
+        let response = self
+            .api
+            .query_themagraphs_regex(
+                params.api_token_file,
+                &RegexQueryRequest {
+                    pattern: params.pattern,
+                    case_insensitive: params.case_insensitive,
+                    target: params.target,
+                },
+            )
+            .await?;
+        to_json_string(response)
+    }
+
+    #[tool(
+        name = "list_tags",
+        description = "List all known tags from the rhizomatic HTTP API."
+    )]
+    async fn list_tags(
+        &self,
+        Parameters(params): Parameters<AuthParams>,
+    ) -> Result<String, String> {
+        let tags = self.api.list_tags(params.api_token_file).await?;
+        to_json_string(tags)
+    }
+
+    #[tool(
+        name = "query_tags_regex",
+        description = "Run a regular expression query against known tags through the rhizomatic HTTP API."
+    )]
+    async fn query_tags_regex(
+        &self,
+        Parameters(params): Parameters<RegexQueryTagsParams>,
+    ) -> Result<String, String> {
+        let tags = self
+            .api
+            .query_tags_regex(
+                params.api_token_file,
+                &RegexQueryRequest {
+                    pattern: params.pattern,
+                    case_insensitive: params.case_insensitive,
+                    target: None,
+                },
+            )
+            .await?;
+        to_json_string(tags)
+    }
+
+    #[tool(
+        name = "create_tag",
+        description = "Create a standalone tag through the rhizomatic HTTP API."
+    )]
+    async fn create_tag(
+        &self,
+        Parameters(params): Parameters<CreateTagParams>,
+    ) -> Result<String, String> {
+        let tag = self
+            .api
+            .create_tag(params.api_token_file, &CreateTag { name: params.name })
+            .await?;
+        to_json_string(tag)
     }
 }
 

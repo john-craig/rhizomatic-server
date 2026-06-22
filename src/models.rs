@@ -3,6 +3,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tag {
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Themagraph {
     pub id: String,
     pub body: String,
@@ -34,6 +40,20 @@ pub struct QueryResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct QueryRequest {
     pub query: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegexQueryRequest {
+    pub pattern: String,
+    #[serde(default)]
+    pub case_insensitive: bool,
+    #[serde(default)]
+    pub target: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateTag {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
