@@ -38,12 +38,20 @@
             cargoLock.lockFile = ./Cargo.lock;
 
             nativeBuildInputs = with pkgs; [
+              makeWrapper
               pkg-config
             ];
 
             buildInputs = with pkgs; [
               sqlite
             ];
+
+            postInstall = ''
+              mkdir -p "$out/share/$pname"
+              cp -r static "$out/share/$pname/static"
+              wrapProgram "$out/bin/rhizomatic-server" \
+                --set RHIZOMATIC_STATIC_DIR "$out/share/$pname/static"
+            '';
 
             meta = with pkgs.lib; {
               description = "Rust service for storing and querying rhizomatic themagraphs";
