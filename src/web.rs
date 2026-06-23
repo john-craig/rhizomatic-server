@@ -15,7 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use serde_json::json;
-use std::{net::SocketAddr, sync::Arc};
+use std::{env, net::SocketAddr, sync::Arc};
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing::info;
 
@@ -38,6 +38,7 @@ pub async fn serve(store: Store, config: Config) -> Result<(), std::io::Error> {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let static_dir = static_dir();
     let api = Router::new()
         .route("/health", get(health))
         .route(
@@ -70,9 +71,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/ui/themagraphs/{id}", post(update_from_form))
         .route("/ui/themagraphs/{id}/delete", post(delete_from_form))
         .nest("/api", api)
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", ServeDir::new(static_dir))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+fn static_dir() -> String {
+    env::var("RHIZOMATIC_STATIC_DIR").unwrap_or_else(|_| "static".to_owned())
 }
 
 async fn require_api_token(
