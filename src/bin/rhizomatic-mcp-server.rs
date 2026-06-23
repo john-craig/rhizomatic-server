@@ -8,6 +8,8 @@ use serde::Deserialize;
 use std::env;
 use tracing_subscriber::{EnvFilter, fmt};
 
+const DEFAULT_API_TOKEN_FILE_ENV: &str = "RHIZOMATIC_API_TOKEN_FILE";
+
 #[derive(Debug, Clone)]
 struct RhizomaticMcpServer {
     api: RhizomaticApiClient,
@@ -16,13 +18,15 @@ struct RhizomaticMcpServer {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AuthParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetThemagraphParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Themagraph identifier.
     id: String,
 }
@@ -30,7 +34,8 @@ struct GetThemagraphParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CreateThemagraphParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Themagraph body text.
     body: String,
     /// Explicit intralinks to associate with the themagraph.
@@ -41,7 +46,8 @@ struct CreateThemagraphParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct UpdateThemagraphParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Themagraph identifier.
     id: String,
     /// Replacement themagraph body text.
@@ -54,7 +60,8 @@ struct UpdateThemagraphParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct QueryThemagraphsParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Rhizomatic query string.
     query: String,
 }
@@ -62,7 +69,8 @@ struct QueryThemagraphsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RegexQueryThemagraphsParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Regular expression pattern to match.
     pattern: String,
     /// Whether to ignore case while matching.
@@ -76,7 +84,8 @@ struct RegexQueryThemagraphsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RegexQueryTagsParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Regular expression pattern to match.
     pattern: String,
     /// Whether to ignore case while matching.
@@ -87,7 +96,8 @@ struct RegexQueryTagsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CreateTagParams {
     /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
-    api_token_file: String,
+    #[serde(default)]
+    api_token_file: Option<String>,
     /// Tag name to create.
     name: String,
 }
@@ -102,8 +112,9 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<AuthParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         self.api
-            .health(params.api_token_file)
+            .health(api_token_file)
             .await
             .and_then(to_json_string)
     }
@@ -116,7 +127,8 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<AuthParams>,
     ) -> Result<String, String> {
-        let themagraphs = self.api.list_themagraphs(params.api_token_file).await?;
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
+        let themagraphs = self.api.list_themagraphs(api_token_file).await?;
         to_json_string(themagraphs)
     }
 
@@ -128,9 +140,10 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<GetThemagraphParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let themagraph = self
             .api
-            .get_themagraph(params.api_token_file, &params.id)
+            .get_themagraph(api_token_file, &params.id)
             .await?;
         to_json_string(themagraph)
     }
@@ -143,9 +156,10 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<GetThemagraphParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let themagraph = self
             .api
-            .get_themagraph_by_uuid(params.api_token_file, &params.id)
+            .get_themagraph_by_uuid(api_token_file, &params.id)
             .await?;
         to_json_string(themagraph)
     }
@@ -158,10 +172,11 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<CreateThemagraphParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let themagraph = self
             .api
             .create_themagraph(
-                params.api_token_file,
+                api_token_file,
                 &CreateThemagraph {
                     body: params.body,
                     links: params.links,
@@ -179,10 +194,11 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<UpdateThemagraphParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let themagraph = self
             .api
             .update_themagraph(
-                params.api_token_file,
+                api_token_file,
                 &params.id,
                 &UpdateThemagraph {
                     body: params.body,
@@ -212,9 +228,10 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<GetThemagraphParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let value = self
             .api
-            .delete_themagraph(params.api_token_file, &params.id)
+            .delete_themagraph(api_token_file, &params.id)
             .await?;
         to_json_string(value)
     }
@@ -227,9 +244,10 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<QueryThemagraphsParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let response = self
             .api
-            .query_themagraphs(params.api_token_file, &params.query)
+            .query_themagraphs(api_token_file, &params.query)
             .await?;
         to_json_string(response)
     }
@@ -253,10 +271,11 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<RegexQueryThemagraphsParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let response = self
             .api
             .query_themagraphs_regex(
-                params.api_token_file,
+                api_token_file,
                 &RegexQueryRequest {
                     pattern: params.pattern,
                     case_insensitive: params.case_insensitive,
@@ -275,7 +294,8 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<AuthParams>,
     ) -> Result<String, String> {
-        let tags = self.api.list_tags(params.api_token_file).await?;
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
+        let tags = self.api.list_tags(api_token_file).await?;
         to_json_string(tags)
     }
 
@@ -287,10 +307,11 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<RegexQueryTagsParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let tags = self
             .api
             .query_tags_regex(
-                params.api_token_file,
+                api_token_file,
                 &RegexQueryRequest {
                     pattern: params.pattern,
                     case_insensitive: params.case_insensitive,
@@ -309,12 +330,24 @@ impl RhizomaticMcpServer {
         &self,
         Parameters(params): Parameters<CreateTagParams>,
     ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
         let tag = self
             .api
-            .create_tag(params.api_token_file, &CreateTag { name: params.name })
+            .create_tag(api_token_file, &CreateTag { name: params.name })
             .await?;
         to_json_string(tag)
     }
+}
+
+fn resolve_api_token_file(provided: Option<String>) -> Result<String, String> {
+    provided
+        .or_else(|| env::var(DEFAULT_API_TOKEN_FILE_ENV).ok())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "missing api_token_file and {DEFAULT_API_TOKEN_FILE_ENV} is not set"
+            )
+        })
 }
 
 fn to_json_string<T: serde::Serialize>(value: T) -> Result<String, String> {
