@@ -78,6 +78,8 @@ It runs as an stdio MCP server and exposes these tools:
 - `query_themagraphs`
 - `query_themagraphs_rhizomatic`
 - `query_themagraphs_regex`
+- `list_links`
+- `list_named_query_links`
 - `list_tags`
 - `query_tags_regex`
 - `create_tag`

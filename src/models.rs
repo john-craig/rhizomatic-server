@@ -88,7 +88,7 @@ pub struct SearchResult {
     pub matched_by_query: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkResult {
     pub name: String,
     pub is_named_query: bool,

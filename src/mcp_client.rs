@@ -1,6 +1,6 @@
 use crate::models::{
-    CreateTag, CreateThemagraph, QueryRequest, QueryResponse, RegexQueryRequest, Tag, Themagraph,
-    UpdateThemagraph,
+    CreateTag, CreateThemagraph, LinkResult, QueryRequest, QueryResponse, RegexQueryRequest, Tag,
+    Themagraph, UpdateThemagraph,
 };
 use reqwest::{Client, StatusCode};
 use serde_json::{Value, json};
@@ -169,6 +169,35 @@ impl RhizomaticApiClient {
         .json::<Vec<Tag>>()
         .await
         .map_err(|error| format!("failed to decode tag list: {error}"))
+    }
+
+    pub async fn list_links(
+        &self,
+        token_file: impl AsRef<Path>,
+    ) -> Result<Vec<LinkResult>, String> {
+        self.request(
+            self.client.get(format!("{}/api/links", self.base_url)),
+            token_file,
+        )
+        .await?
+        .json::<Vec<LinkResult>>()
+        .await
+        .map_err(|error| format!("failed to decode intralink list: {error}"))
+    }
+
+    pub async fn list_named_query_links(
+        &self,
+        token_file: impl AsRef<Path>,
+    ) -> Result<Vec<LinkResult>, String> {
+        self.request(
+            self.client
+                .get(format!("{}/api/links/named-queries", self.base_url)),
+            token_file,
+        )
+        .await?
+        .json::<Vec<LinkResult>>()
+        .await
+        .map_err(|error| format!("failed to decode named-query link list: {error}"))
     }
 
     pub async fn query_tags_regex(

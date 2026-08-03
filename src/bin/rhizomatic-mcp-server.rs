@@ -141,10 +141,7 @@ impl RhizomaticMcpServer {
         Parameters(params): Parameters<GetThemagraphParams>,
     ) -> Result<String, String> {
         let api_token_file = resolve_api_token_file(params.api_token_file)?;
-        let themagraph = self
-            .api
-            .get_themagraph(api_token_file, &params.id)
-            .await?;
+        let themagraph = self.api.get_themagraph(api_token_file, &params.id).await?;
         to_json_string(themagraph)
     }
 
@@ -300,6 +297,32 @@ impl RhizomaticMcpServer {
     }
 
     #[tool(
+        name = "list_links",
+        description = "List all intralinks across themagraphs through the rhizomatic HTTP API."
+    )]
+    async fn list_links(
+        &self,
+        Parameters(params): Parameters<AuthParams>,
+    ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
+        let links = self.api.list_links(api_token_file).await?;
+        to_json_string(links)
+    }
+
+    #[tool(
+        name = "list_named_query_links",
+        description = "List only named-query intralinks through the rhizomatic HTTP API."
+    )]
+    async fn list_named_query_links(
+        &self,
+        Parameters(params): Parameters<AuthParams>,
+    ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
+        let links = self.api.list_named_query_links(api_token_file).await?;
+        to_json_string(links)
+    }
+
+    #[tool(
         name = "query_tags_regex",
         description = "Run a regular expression query against known tags through the rhizomatic HTTP API."
     )]
@@ -344,9 +367,7 @@ fn resolve_api_token_file(provided: Option<String>) -> Result<String, String> {
         .or_else(|| env::var(DEFAULT_API_TOKEN_FILE_ENV).ok())
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
-            format!(
-                "missing api_token_file and {DEFAULT_API_TOKEN_FILE_ENV} is not set"
-            )
+            format!("missing api_token_file and {DEFAULT_API_TOKEN_FILE_ENV} is not set")
         })
 }
 
