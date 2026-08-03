@@ -6,7 +6,8 @@ It provides:
 
 - JSON CRUD endpoints for themagraphs and their intralinks
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
-- A lightweight web UI for creating, editing, browsing, deleting, and searching themagraphs
+- A tabbed web UI with query-driven Search, themagraph Create, and fuzzy-searchable Links views
+- Search can save a valid query as a named-query themagraph, and Links can be constrained to named queries
 - SQLite persistence so the dataset can live independently from vault markdown files
 - API-token authentication for the JSON API, configured from a server-side config file
 - A stdio-based MCP server executable that exposes the HTTP API as MCP tools

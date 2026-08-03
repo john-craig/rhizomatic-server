@@ -11,34 +11,26 @@
       <section class="hero">
         <p class="eyebrow">Rust + SQLite</p>
         <h1>Rhizomatic Themagraph Server</h1>
-        <p class="lede">
-          Store themagraphs, manage intralinks, and run rhizomatic queries from a browser or JSON API.
-        </p>
+        <p class="lede">Store themagraphs, manage intralinks, and run rhizomatic queries from a browser or JSON API.</p>
       </section>
 
+      <nav class="tabs" aria-label="Main navigation">
+        <a class="tab {% if active_tab == "search" %}active{% endif %}" href="/?tab=search">Search</a>
+        <a class="tab {% if active_tab == "create" %}active{% endif %}" href="/?tab=create">Create</a>
+        <a class="tab {% if active_tab == "links" %}active{% endif %}" href="/?tab=links">Links</a>
+      </nav>
+
+      {% if active_tab == "search" %}
       <section class="panel">
-        <h2>Query</h2>
+        <div class="panel-header">
+          <h2>Search</h2>
+          <button type="button" class="secondary" onclick="openNamedQueryDialog()">Save as named query</button>
+        </div>
         <form method="get" action="/" class="stack">
+          <input type="hidden" name="tab" value="search" />
           <label for="query">Rhizomatic query</label>
-          <input
-            id="query"
-            name="query"
-            type="text"
-            value="{{ query }}"
-            placeholder="[[project]] && ([[rust]] || *[[meta]])"
-          />
+          <input id="query" name="query" type="text" value="{{ query }}" placeholder="[[project]] && ([[rust]] || *[[meta]])" autofocus />
           <button type="submit">Search</button>
-        </form>
-      </section>
-
-      <section class="panel">
-        <h2>Create Themagraph</h2>
-        <form method="post" action="/ui/themagraphs" class="stack">
-          <label for="body">Body</label>
-          <textarea id="body" name="body" rows="8" placeholder="Write the themagraph body here."></textarea>
-          <label for="links">Links</label>
-          <input id="links" name="links" type="text" placeholder="programming rhizomatic server, rhizomatic" />
-          <button type="submit">Create</button>
         </form>
       </section>
 
@@ -52,20 +44,75 @@
           <article class="card">
             <div class="card-header">
               <a href="/themagraphs/{{ result.themagraph.id }}">{{ result.themagraph.id }}</a>
-              {% if result.matched_by_query %}
-              <span class="badge">match</span>
-              {% endif %}
+              {% if result.matched_by_query %}<span class="badge">match</span>{% endif %}
             </div>
             <p>{{ result.themagraph.body }}</p>
             <div class="tags">
-              {% for link in result.themagraph.links %}
-              <span>[[{{ link }}]]</span>
-              {% endfor %}
+              {% for link in result.themagraph.links %}<span>[[{{ link }}]]</span>{% endfor %}
             </div>
           </article>
           {% endfor %}
         </div>
       </section>
+
+      <dialog id="named-query-dialog">
+        <form method="post" action="/ui/named-queries" class="stack">
+          <h2>Save named query</h2>
+          <p class="muted">The current search will be saved as a named-query themagraph.</p>
+          <input type="hidden" name="query" value="{{ query }}" />
+          <label for="named-query-name">Named query name</label>
+          <input id="named-query-name" name="name" type="text" placeholder="my project notes" required />
+          <div class="dialog-actions">
+            <button type="submit">Save</button>
+            <button type="button" class="secondary" onclick="closeNamedQueryDialog()">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+      {% else if active_tab == "create" %}
+      <section class="panel">
+        <h2>Create Themagraph</h2>
+        <form method="post" action="/ui/themagraphs" class="stack">
+          <label for="body">Body</label>
+          <textarea id="body" name="body" rows="10" placeholder="Write the themagraph body here." autofocus></textarea>
+          <label for="links">Links</label>
+          <input id="links" name="links" type="text" placeholder="programming rhizomatic server, rhizomatic" />
+          <button type="submit">Create</button>
+        </form>
+      </section>
+      {% else %}
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Links</h2>
+          <span>{{ links.len() }} shown</span>
+        </div>
+        <form method="get" action="/" class="stack">
+          <input type="hidden" name="tab" value="links" />
+          <label for="link-query">Fuzzy search intralinks</label>
+          <input id="link-query" name="link_query" type="search" value="{{ link_query }}" placeholder="Search intralinks" autofocus />
+          <label class="checkbox"><input type="checkbox" name="named_only" value="true" {% if named_only %}checked{% endif %} /> Named queries only</label>
+          <button type="submit">Filter links</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="link-list">
+          {% for link in links %}
+          <div class="link-row">
+            <span>[[{{ link.name }}]]</span>
+            {% if link.is_named_query %}<span class="badge">named query</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
     </main>
+    <script>
+      const namedQueryDialog = document.getElementById("named-query-dialog");
+      function openNamedQueryDialog() {
+        if (!document.querySelector("input[name=query]").value.trim()) return;
+        namedQueryDialog.showModal();
+      }
+      function closeNamedQueryDialog() { namedQueryDialog.close(); }
+    </script>
   </body>
 </html>

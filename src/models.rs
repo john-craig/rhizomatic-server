@@ -59,6 +59,9 @@ pub struct CreateTag {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchParams {
     pub query: Option<String>,
+    pub tab: Option<String>,
+    pub link_query: Option<String>,
+    pub named_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,12 +88,22 @@ pub struct SearchResult {
     pub matched_by_query: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkResult {
+    pub name: String,
+    pub is_named_query: bool,
+}
+
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct IndexTemplate {
+    pub active_tab: String,
     pub query: String,
     pub themagraphs: Vec<SearchResult>,
     pub total_themagraphs: usize,
+    pub links: Vec<LinkResult>,
+    pub link_query: String,
+    pub named_only: bool,
 }
 
 #[derive(Template)]

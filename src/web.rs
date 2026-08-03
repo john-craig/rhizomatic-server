@@ -1,9 +1,10 @@
 use crate::config::Config;
 use crate::models::{
-    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, QueryRequest, QueryResponse,
-    RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
+    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, QueryRequest,
+    QueryResponse, RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm,
+    UpdateThemagraph,
 };
-use crate::query::{filter_themagraphs, regex_filter_tags, regex_filter_themagraphs};
+use crate::query::{filter_themagraphs, parse_query, regex_filter_tags, regex_filter_themagraphs};
 use crate::store::Store;
 use askama::Template;
 use axum::{
@@ -14,6 +15,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::{env, net::SocketAddr, sync::Arc};
 use tower_http::{services::ServeDir, trace::TraceLayer};
@@ -68,6 +70,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(index))
         .route("/themagraphs/{id}", get(detail))
         .route("/ui/themagraphs", post(create_from_form))
+        .route("/ui/named-queries", post(create_named_query_from_form))
         .route("/ui/themagraphs/{id}", post(update_from_form))
         .route("/ui/themagraphs/{id}/delete", post(delete_from_form))
         .nest("/api", api)
@@ -119,6 +122,17 @@ async fn index(
     Query(params): Query<SearchParams>,
 ) -> Result<Html<String>, AppError> {
     let themagraphs = state.store.list_themagraphs().await?;
+    let active_tab = match params.tab.as_deref() {
+        Some("create") | Some("links") => params.tab.clone().unwrap_or_default(),
+        _ => "search".to_owned(),
+    };
+    let link_query = params.link_query.unwrap_or_default();
+    let named_only = params.named_only.unwrap_or(false);
+    let links = if active_tab == "links" {
+        list_link_results(&themagraphs, &link_query, named_only)
+    } else {
+        Vec::new()
+    };
     let matches: Vec<SearchResult> = match params
         .query
         .as_deref()
@@ -149,10 +163,64 @@ async fn index(
     };
 
     render_template(IndexTemplate {
+        active_tab,
         query: params.query.unwrap_or_default(),
         total_themagraphs: matches.len(),
         themagraphs: matches,
+        links,
+        link_query,
+        named_only,
     })
+}
+
+fn list_link_results(
+    themagraphs: &[crate::models::Themagraph],
+    query: &str,
+    named_only: bool,
+) -> Vec<LinkResult> {
+    let named_queries = themagraphs
+        .iter()
+        .filter(|themagraph| themagraph.links.len() == 1 && parse_query(&themagraph.body).is_ok())
+        .map(|themagraph| themagraph.links[0].to_lowercase())
+        .collect::<std::collections::HashSet<_>>();
+    let mut links = themagraphs
+        .iter()
+        .flat_map(|themagraph| themagraph.links.iter())
+        .map(|link| link.trim())
+        .filter(|link| !link.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    links.sort_by_key(|link| link.to_lowercase());
+    links.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+
+    links
+        .into_iter()
+        .filter_map(|name| {
+            let is_named_query = named_queries.contains(&name.to_lowercase());
+            if named_only && !is_named_query {
+                return None;
+            }
+            if !query.trim().is_empty() && !fuzzy_matches(&name, query) {
+                return None;
+            }
+            Some(LinkResult {
+                name,
+                is_named_query,
+            })
+        })
+        .collect()
+}
+
+fn fuzzy_matches(value: &str, query: &str) -> bool {
+    let value = value.to_lowercase();
+    let query = query.to_lowercase();
+    if value.contains(&query) {
+        return true;
+    }
+    let mut value_chars = value.chars();
+    query
+        .chars()
+        .all(|query_char| value_chars.any(|value_char| value_char == query_char))
 }
 
 async fn detail(
@@ -182,6 +250,37 @@ async fn create_from_form(
         })
         .await?;
     Ok(Redirect::to(&format!("/themagraphs/{}", themagraph.id)))
+}
+
+async fn create_named_query_from_form(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<NamedQueryForm>,
+) -> Result<Redirect, AppError> {
+    let name = form.name.trim();
+    let query = form.query.trim();
+    if name.is_empty() || query.is_empty() {
+        return Err(AppError::BadRequest(
+            "named query name and query must not be empty".to_owned(),
+        ));
+    }
+    let link_name = if name.starts_with("[[") && name.ends_with("]]") {
+        name.to_owned()
+    } else {
+        format!("[[{name}]]")
+    };
+    if parse_query(query).is_err() {
+        return Err(AppError::BadRequest(
+            "named query must contain a valid rhizomatic query".to_owned(),
+        ));
+    }
+    state
+        .store
+        .create_themagraph(CreateThemagraph {
+            body: query.to_owned(),
+            links: vec![link_name],
+        })
+        .await?;
+    Ok(Redirect::to("/"))
 }
 
 async fn update_from_form(
@@ -377,6 +476,12 @@ pub enum AppError {
     BadRequest(String),
     Unauthorized(String),
     Internal(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct NamedQueryForm {
+    query: String,
+    name: String,
 }
 
 impl From<sqlx::Error> for AppError {
