@@ -169,6 +169,17 @@ fn named_query_definitions(themagraphs: &[Themagraph]) -> HashMap<String, QueryN
         .collect()
 }
 
+pub fn named_query_names(themagraphs: &[Themagraph]) -> std::collections::HashSet<String> {
+    themagraphs
+        .iter()
+        .filter(|themagraph| themagraph.links.len() == 1)
+        .filter(|themagraph| {
+            !themagraph.body.trim().is_empty() && parse_query(themagraph.body.trim()).is_ok()
+        })
+        .map(|themagraph| themagraph.links[0].clone())
+        .collect()
+}
+
 fn expand_named_queries(
     node: &QueryNode,
     definitions: &HashMap<String, QueryNode>,

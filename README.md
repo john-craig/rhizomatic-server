@@ -166,6 +166,24 @@ curl -X POST http://127.0.0.1:3000/api/tags/query/regex \
   }'
 ```
 
+### Intralinks
+
+List every intralink, including whether it is a named query:
+
+```sh
+curl \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  http://127.0.0.1:3000/api/links
+```
+
+List only named-query intralinks:
+
+```sh
+curl \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  http://127.0.0.1:3000/api/links/named-queries
+```
+
 ## Notes on compatibility
 
 - Query parsing is intentionally modeled after the current `rhizoidlib` implementation instead of inventing a separate syntax.

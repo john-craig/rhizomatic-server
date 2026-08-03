@@ -4,7 +4,9 @@ use crate::models::{
     QueryResponse, RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm,
     UpdateThemagraph,
 };
-use crate::query::{filter_themagraphs, parse_query, regex_filter_tags, regex_filter_themagraphs};
+use crate::query::{
+    filter_themagraphs, named_query_names, parse_query, regex_filter_tags, regex_filter_themagraphs,
+};
 use crate::store::Store;
 use askama::Template;
 use axum::{
@@ -59,6 +61,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/query/regex", post(query_themagraphs_regex))
         .route("/themagraphs/uuid/{id}", get(get_themagraph_by_uuid))
+        .route("/links", get(list_links))
+        .route("/links/named-queries", get(list_named_query_links))
         .route("/tags", get(list_tags).post(create_tag))
         .route("/tags/query/regex", post(query_tags_regex))
         .route_layer(middleware::from_fn_with_state(
@@ -178,10 +182,9 @@ fn list_link_results(
     query: &str,
     named_only: bool,
 ) -> Vec<LinkResult> {
-    let named_queries = themagraphs
-        .iter()
-        .filter(|themagraph| themagraph.links.len() == 1 && parse_query(&themagraph.body).is_ok())
-        .map(|themagraph| themagraph.links[0].to_lowercase())
+    let named_queries = named_query_names(themagraphs)
+        .into_iter()
+        .map(|name| name.to_lowercase())
         .collect::<std::collections::HashSet<_>>();
     let mut links = themagraphs
         .iter()
@@ -348,6 +351,18 @@ async fn create_themagraph(
 
 async fn list_tags(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Tag>>, AppError> {
     Ok(Json(state.store.list_tags().await?))
+}
+
+async fn list_links(State(state): State<Arc<AppState>>) -> Result<Json<Vec<LinkResult>>, AppError> {
+    let themagraphs = state.store.list_themagraphs().await?;
+    Ok(Json(list_link_results(&themagraphs, "", false)))
+}
+
+async fn list_named_query_links(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<LinkResult>>, AppError> {
+    let themagraphs = state.store.list_themagraphs().await?;
+    Ok(Json(list_link_results(&themagraphs, "", true)))
 }
 
 async fn create_tag(
