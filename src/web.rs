@@ -5,8 +5,8 @@ use crate::models::{
     ReverseQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
 };
 use crate::query::{
-    filter_themagraphs, named_queries_matching_link_pattern, named_query_names, parse_query,
-    regex_filter_tags, regex_filter_themagraphs,
+    filter_themagraphs, named_queries_matching_link_pattern, named_query_names,
+    parse_named_query_definition, regex_filter_tags, regex_filter_themagraphs,
 };
 use crate::store::Store;
 use crate::template::render_template as render_rhizomatic_template;
@@ -297,7 +297,8 @@ async fn create_named_query_from_form(
     } else {
         format!("[[{name}]]")
     };
-    if parse_query(query).is_err() {
+    let body = format!("{link_name} = {query}");
+    if parse_named_query_definition(&body).is_none() {
         return Err(AppError::BadRequest(
             "named query must contain a valid rhizomatic query".to_owned(),
         ));
@@ -305,8 +306,8 @@ async fn create_named_query_from_form(
     state
         .store
         .create_themagraph(CreateThemagraph {
-            body: query.to_owned(),
-            links: vec![link_name],
+            body,
+            links: vec![],
         })
         .await?;
     Ok(Redirect::to("/"))

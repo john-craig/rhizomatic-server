@@ -6,7 +6,7 @@ It provides:
 
 - JSON CRUD endpoints for themagraphs and their intralinks
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
-- Named-query expansion for one-link themagraphs whose bodies are valid rhizomatic queries
+- Named-query expansion for themagraphs whose bodies use `[[query-name]] = <rhizomatic-query>` syntax; stored links do not define named queries
 - Rhizomatic template rendering with `title()`, `$query`, and `tasks(...)` expressions
 - Reverse lookup of named queries matching an intralink
 - Regex intralink matching via `[[~pattern]]` query values and regex-enabled link lookup
