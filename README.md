@@ -9,6 +9,7 @@ It provides:
 - Named-query expansion for one-link themagraphs whose bodies are valid rhizomatic queries
 - Rhizomatic template rendering with `title()`, `$query`, and `tasks(...)` expressions
 - Reverse lookup of named queries matching an intralink
+- Regex intralink matching via `[[~pattern]]` query values and regex-enabled link lookup
 - A tabbed web UI with query-driven Search, themagraph Create, and fuzzy-searchable Links views
 - Search can save a valid query as a named-query themagraph, and Links can be constrained to named queries
 - SQLite persistence so the dataset can live independently from vault markdown files
@@ -82,6 +83,7 @@ It runs as an stdio MCP server and exposes these tools:
 - `query_themagraphs_regex`
 - `list_links`
 - `list_named_query_links`
+- `reverse_query`
 - `list_tags`
 - `query_tags_regex`
 - `create_tag`
@@ -202,6 +204,15 @@ curl -X POST http://127.0.0.1:3000/api/reverse-query \
   -H 'authorization: Bearer replace-with-a-long-random-token' \
   -H 'content-type: application/json' \
   -d '{"link":"[[craft]]"}'
+```
+
+Use regex matching for reverse lookup by setting `"regex": true`:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/reverse-query \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{"link":"craft.*","regex":true}'
 ```
 
 List only named-query intralinks:

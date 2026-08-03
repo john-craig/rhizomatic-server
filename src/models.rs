@@ -61,6 +61,8 @@ pub struct RenderTemplateResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ReverseQueryRequest {
     pub link: String,
+    #[serde(default)]
+    pub regex: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +91,14 @@ pub struct SearchParams {
     pub tab: Option<String>,
     pub link_query: Option<String>,
     pub named_only: Option<bool>,
+    pub link_regex: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LinkSearchParams {
+    pub query: Option<String>,
+    pub named_only: Option<bool>,
+    pub regex: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -131,6 +141,7 @@ pub struct IndexTemplate {
     pub links: Vec<LinkResult>,
     pub link_query: String,
     pub named_only: bool,
+    pub link_regex: bool,
 }
 
 #[derive(Template)]

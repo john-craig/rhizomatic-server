@@ -1,11 +1,11 @@
 use crate::config::Config;
 use crate::models::{
-    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, QueryRequest,
-    QueryResponse, RegexQueryRequest, RenderTemplateRequest, RenderTemplateResponse,
+    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, LinkSearchParams,
+    QueryRequest, QueryResponse, RegexQueryRequest, RenderTemplateRequest, RenderTemplateResponse,
     ReverseQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
 };
 use crate::query::{
-    filter_themagraphs, named_queries_matching_link, named_query_names, parse_query,
+    filter_themagraphs, named_queries_matching_link_pattern, named_query_names, parse_query,
     regex_filter_tags, regex_filter_themagraphs,
 };
 use crate::store::Store;
@@ -19,6 +19,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use regex::RegexBuilder;
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, net::SocketAddr, sync::Arc};
@@ -136,8 +137,9 @@ async fn index(
     };
     let link_query = params.link_query.unwrap_or_default();
     let named_only = params.named_only.unwrap_or(false);
+    let link_regex = params.link_regex.unwrap_or(false);
     let links = if active_tab == "links" {
-        list_link_results(&themagraphs, &link_query, named_only)
+        list_link_results(&themagraphs, &link_query, named_only, link_regex)?
     } else {
         Vec::new()
     };
@@ -178,6 +180,7 @@ async fn index(
         links,
         link_query,
         named_only,
+        link_regex,
     })
 }
 
@@ -185,7 +188,8 @@ fn list_link_results(
     themagraphs: &[crate::models::Themagraph],
     query: &str,
     named_only: bool,
-) -> Vec<LinkResult> {
+    regex: bool,
+) -> Result<Vec<LinkResult>, AppError> {
     let named_queries = named_query_names(themagraphs)
         .into_iter()
         .map(|name| name.to_lowercase())
@@ -199,15 +203,32 @@ fn list_link_results(
         .collect::<Vec<_>>();
     links.sort_by_key(|link| link.to_lowercase());
     links.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    let regex = if regex && !query.trim().is_empty() {
+        Some(
+            RegexBuilder::new(query)
+                .case_insensitive(true)
+                .build()
+                .map_err(|error| {
+                    AppError::BadRequest(format!("invalid intralink regex: {error}"))
+                })?,
+        )
+    } else {
+        None
+    };
 
-    links
+    let results = links
         .into_iter()
         .filter_map(|name| {
             let is_named_query = named_queries.contains(&name.to_lowercase());
             if named_only && !is_named_query {
                 return None;
             }
-            if !query.trim().is_empty() && !fuzzy_matches(&name, query) {
+            if !query.trim().is_empty()
+                && !regex
+                    .as_ref()
+                    .map(|regex| regex.is_match(&name))
+                    .unwrap_or_else(|| fuzzy_matches(&name, query))
+            {
                 return None;
             }
             Some(LinkResult {
@@ -215,7 +236,8 @@ fn list_link_results(
                 is_named_query,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    Ok(results)
 }
 
 fn fuzzy_matches(value: &str, query: &str) -> bool {
@@ -357,16 +379,30 @@ async fn list_tags(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Tag>>,
     Ok(Json(state.store.list_tags().await?))
 }
 
-async fn list_links(State(state): State<Arc<AppState>>) -> Result<Json<Vec<LinkResult>>, AppError> {
+async fn list_links(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<LinkSearchParams>,
+) -> Result<Json<Vec<LinkResult>>, AppError> {
     let themagraphs = state.store.list_themagraphs().await?;
-    Ok(Json(list_link_results(&themagraphs, "", false)))
+    Ok(Json(list_link_results(
+        &themagraphs,
+        params.query.as_deref().unwrap_or_default(),
+        params.named_only.unwrap_or(false),
+        params.regex.unwrap_or(false),
+    )?))
 }
 
 async fn list_named_query_links(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<LinkSearchParams>,
 ) -> Result<Json<Vec<LinkResult>>, AppError> {
     let themagraphs = state.store.list_themagraphs().await?;
-    Ok(Json(list_link_results(&themagraphs, "", true)))
+    Ok(Json(list_link_results(
+        &themagraphs,
+        params.query.as_deref().unwrap_or_default(),
+        true,
+        params.regex.unwrap_or(false),
+    )?))
 }
 
 async fn create_tag(
@@ -483,10 +519,9 @@ async fn reverse_query(
         return Err(AppError::BadRequest("link must not be empty".to_owned()));
     }
     let themagraphs = state.store.list_themagraphs().await?;
-    Ok(Json(named_queries_matching_link(
-        &themagraphs,
-        &payload.link,
-    )))
+    let matches = named_queries_matching_link_pattern(&themagraphs, &payload.link, payload.regex)
+        .map_err(|error| AppError::BadRequest(error.message))?;
+    Ok(Json(matches))
 }
 
 async fn query_tags_regex(

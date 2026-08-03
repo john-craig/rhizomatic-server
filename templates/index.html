@@ -90,6 +90,7 @@
           <label for="link-query">Fuzzy search intralinks</label>
           <input id="link-query" name="link_query" type="search" value="{{ link_query }}" placeholder="Search intralinks" autofocus />
           <label class="checkbox"><input type="checkbox" name="named_only" value="true" {% if named_only %}checked{% endif %} /> Named queries only</label>
+          <label class="checkbox"><input type="checkbox" name="link_regex" value="true" {% if link_regex %}checked{% endif %} /> Regex search</label>
           <button type="submit">Filter links</button>
         </form>
       </section>
