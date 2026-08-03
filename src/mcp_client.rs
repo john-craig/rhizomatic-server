@@ -1,6 +1,6 @@
 use crate::models::{
-    CreateTag, CreateThemagraph, LinkResult, QueryRequest, QueryResponse, RegexQueryRequest, Tag,
-    Themagraph, UpdateThemagraph,
+    CreateTag, CreateThemagraph, LinkResult, NamedQueryMatch, QueryRequest, QueryResponse,
+    RegexQueryRequest, ReverseQueryRequest, Tag, Themagraph, UpdateThemagraph,
 };
 use reqwest::{Client, StatusCode};
 use serde_json::{Value, json};
@@ -174,30 +174,60 @@ impl RhizomaticApiClient {
     pub async fn list_links(
         &self,
         token_file: impl AsRef<Path>,
+        query: Option<&str>,
+        named_only: bool,
+        regex: bool,
     ) -> Result<Vec<LinkResult>, String> {
-        self.request(
-            self.client.get(format!("{}/api/links", self.base_url)),
-            token_file,
-        )
-        .await?
-        .json::<Vec<LinkResult>>()
-        .await
-        .map_err(|error| format!("failed to decode intralink list: {error}"))
+        let request = self
+            .client
+            .get(format!("{}/api/links", self.base_url))
+            .query(&[
+                ("query", query.unwrap_or_default()),
+                ("named_only", if named_only { "true" } else { "false" }),
+                ("regex", if regex { "true" } else { "false" }),
+            ]);
+        self.request(request, token_file)
+            .await?
+            .json::<Vec<LinkResult>>()
+            .await
+            .map_err(|error| format!("failed to decode intralink list: {error}"))
     }
 
     pub async fn list_named_query_links(
         &self,
         token_file: impl AsRef<Path>,
+        query: Option<&str>,
+        regex: bool,
     ) -> Result<Vec<LinkResult>, String> {
+        let request = self
+            .client
+            .get(format!("{}/api/links/named-queries", self.base_url))
+            .query(&[
+                ("query", query.unwrap_or_default()),
+                ("regex", if regex { "true" } else { "false" }),
+            ]);
+        self.request(request, token_file)
+            .await?
+            .json::<Vec<LinkResult>>()
+            .await
+            .map_err(|error| format!("failed to decode named-query link list: {error}"))
+    }
+
+    pub async fn reverse_query(
+        &self,
+        token_file: impl AsRef<Path>,
+        payload: &ReverseQueryRequest,
+    ) -> Result<Vec<NamedQueryMatch>, String> {
         self.request(
             self.client
-                .get(format!("{}/api/links/named-queries", self.base_url)),
+                .post(format!("{}/api/reverse-query", self.base_url))
+                .json(payload),
             token_file,
         )
         .await?
-        .json::<Vec<LinkResult>>()
+        .json::<Vec<NamedQueryMatch>>()
         .await
-        .map_err(|error| format!("failed to decode named-query link list: {error}"))
+        .map_err(|error| format!("failed to decode reverse-query response: {error}"))
     }
 
     pub async fn query_tags_regex(

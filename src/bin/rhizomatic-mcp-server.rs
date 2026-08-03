@@ -1,6 +1,8 @@
 use rhizomatic_server::{
     mcp_client::RhizomaticApiClient,
-    models::{CreateTag, CreateThemagraph, RegexQueryRequest, UpdateThemagraph},
+    models::{
+        CreateTag, CreateThemagraph, RegexQueryRequest, ReverseQueryRequest, UpdateThemagraph,
+    },
 };
 use rmcp::{ServiceExt, handler::server::wrapper::Parameters, tool, tool_router, transport::stdio};
 use schemars::JsonSchema;
@@ -91,6 +93,34 @@ struct RegexQueryTagsParams {
     /// Whether to ignore case while matching.
     #[serde(default)]
     case_insensitive: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct LinkSearchParams {
+    /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
+    #[serde(default)]
+    api_token_file: Option<String>,
+    /// Optional intralink text or regular expression to search for.
+    #[serde(default)]
+    query: Option<String>,
+    /// Whether to interpret query as a case-insensitive regular expression.
+    #[serde(default)]
+    regex: bool,
+    /// Restrict results to named-query intralinks.
+    #[serde(default)]
+    named_only: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ReverseQueryParams {
+    /// Path to a file containing the API token used to authenticate against the rhizomatic HTTP server.
+    #[serde(default)]
+    api_token_file: Option<String>,
+    /// Intralink text or regular expression to match.
+    link: String,
+    /// Whether to interpret link as a case-insensitive regular expression.
+    #[serde(default)]
+    regex: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -302,10 +332,18 @@ impl RhizomaticMcpServer {
     )]
     async fn list_links(
         &self,
-        Parameters(params): Parameters<AuthParams>,
+        Parameters(params): Parameters<LinkSearchParams>,
     ) -> Result<String, String> {
         let api_token_file = resolve_api_token_file(params.api_token_file)?;
-        let links = self.api.list_links(api_token_file).await?;
+        let links = self
+            .api
+            .list_links(
+                api_token_file,
+                params.query.as_deref(),
+                params.named_only,
+                params.regex,
+            )
+            .await?;
         to_json_string(links)
     }
 
@@ -315,11 +353,36 @@ impl RhizomaticMcpServer {
     )]
     async fn list_named_query_links(
         &self,
-        Parameters(params): Parameters<AuthParams>,
+        Parameters(params): Parameters<LinkSearchParams>,
     ) -> Result<String, String> {
         let api_token_file = resolve_api_token_file(params.api_token_file)?;
-        let links = self.api.list_named_query_links(api_token_file).await?;
+        let links = self
+            .api
+            .list_named_query_links(api_token_file, params.query.as_deref(), params.regex)
+            .await?;
         to_json_string(links)
+    }
+
+    #[tool(
+        name = "reverse_query",
+        description = "Find named queries matching an intralink or intralink regular expression through the rhizomatic HTTP API."
+    )]
+    async fn reverse_query(
+        &self,
+        Parameters(params): Parameters<ReverseQueryParams>,
+    ) -> Result<String, String> {
+        let api_token_file = resolve_api_token_file(params.api_token_file)?;
+        let matches = self
+            .api
+            .reverse_query(
+                api_token_file,
+                &ReverseQueryRequest {
+                    link: params.link,
+                    regex: params.regex,
+                },
+            )
+            .await?;
+        to_json_string(matches)
     }
 
     #[tool(

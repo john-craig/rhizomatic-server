@@ -1,10 +1,11 @@
-use crate::models::Themagraph;
+use crate::models::{NamedQueryMatch, Themagraph};
 use regex::{Regex, RegexBuilder};
 use std::{collections::HashMap, sync::OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryNode {
     Value(String),
+    Regex(String),
     And(Box<QueryNode>, Box<QueryNode>),
     Or(Box<QueryNode>, Box<QueryNode>),
     Not(Box<QueryNode>),
@@ -62,7 +63,23 @@ impl Parser {
             }
             Some(token) if token.starts_with("[[") && token.ends_with("]]") => {
                 let token = self.consume(None)?;
-                Ok(QueryNode::Value(normalize_link_text(&token)))
+                let value = normalize_link_text(&token);
+                if let Some(pattern) = value.strip_prefix('~') {
+                    if pattern.is_empty() {
+                        return Err(QueryError {
+                            message: "regex query link must contain a pattern after '~'".to_owned(),
+                        });
+                    }
+                    RegexBuilder::new(pattern)
+                        .case_insensitive(true)
+                        .build()
+                        .map_err(|error| QueryError {
+                            message: format!("invalid intralink regex: {error}"),
+                        })?;
+                    Ok(QueryNode::Regex(pattern.to_owned()))
+                } else {
+                    Ok(QueryNode::Value(value))
+                }
             }
             Some(token) => Err(QueryError {
                 message: format!("Unexpected token: {token}"),
@@ -156,15 +173,9 @@ pub fn filter_themagraphs<'a>(themagraphs: &'a [Themagraph], query: &str) -> Vec
 fn named_query_definitions(themagraphs: &[Themagraph]) -> HashMap<String, QueryNode> {
     themagraphs
         .iter()
-        .filter(|themagraph| themagraph.links.len() == 1)
         .filter_map(|themagraph| {
-            let body = themagraph.body.trim();
-            if body.is_empty() {
-                return None;
-            }
-            parse_query(body)
-                .ok()
-                .map(|definition| (themagraph.links[0].to_lowercase(), definition))
+            parse_named_query_definition(&themagraph.body)
+                .map(|(name, _, definition)| (name.to_lowercase(), definition))
         })
         .collect()
 }
@@ -172,12 +183,90 @@ fn named_query_definitions(themagraphs: &[Themagraph]) -> HashMap<String, QueryN
 pub fn named_query_names(themagraphs: &[Themagraph]) -> std::collections::HashSet<String> {
     themagraphs
         .iter()
-        .filter(|themagraph| themagraph.links.len() == 1)
-        .filter(|themagraph| {
-            !themagraph.body.trim().is_empty() && parse_query(themagraph.body.trim()).is_ok()
+        .filter_map(|themagraph| {
+            parse_named_query_definition(&themagraph.body).map(|(name, _, _)| name)
         })
-        .map(|themagraph| themagraph.links[0].clone())
         .collect()
+}
+
+pub fn parse_named_query_definition(body: &str) -> Option<(String, String, QueryNode)> {
+    static DEFINITION_RE: OnceLock<Regex> = OnceLock::new();
+    let captures = DEFINITION_RE
+        .get_or_init(|| {
+            Regex::new(r"(?s)^\s*\[\[([^\]\r\n]+)\]\]\s*=\s*(.*?)\s*$").expect("valid regex")
+        })
+        .captures(body)?;
+    let name = normalize_link_text(captures.get(1)?.as_str());
+    let query = captures.get(2)?.as_str().trim();
+    if name.is_empty() || query.is_empty() {
+        return None;
+    }
+    let definition = parse_query(query).ok()?;
+    Some((name, query.to_owned(), definition))
+}
+
+pub fn named_queries_matching_link(themagraphs: &[Themagraph], link: &str) -> Vec<NamedQueryMatch> {
+    named_queries_matching_link_pattern(themagraphs, link, false).unwrap_or_default()
+}
+
+pub fn named_queries_matching_link_pattern(
+    themagraphs: &[Themagraph],
+    link: &str,
+    regex: bool,
+) -> Result<Vec<NamedQueryMatch>, QueryError> {
+    let link = normalize_link_text(link);
+    if link.is_empty() {
+        return Ok(Vec::new());
+    }
+    let candidates = if regex {
+        let matcher = RegexBuilder::new(&link)
+            .case_insensitive(true)
+            .build()
+            .map_err(|error| QueryError {
+                message: format!("invalid intralink regex: {error}"),
+            })?;
+        let mut candidates = themagraphs
+            .iter()
+            .flat_map(|themagraph| themagraph.links.iter())
+            .filter(|candidate| matcher.is_match(candidate))
+            .cloned()
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|candidate| candidate.to_lowercase());
+        candidates.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        candidates
+    } else {
+        vec![link]
+    };
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let definitions = named_query_definitions(themagraphs);
+
+    Ok(themagraphs
+        .iter()
+        .filter_map(|themagraph| {
+            let (name, query, _) = parse_named_query_definition(&themagraph.body)?;
+            let definition = definitions.get(&name.to_lowercase())?;
+            let expanded = expand_named_queries(
+                definition,
+                &definitions,
+                &mut std::collections::HashSet::new(),
+            );
+            candidates
+                .iter()
+                .any(|candidate| {
+                    let synthetic = Themagraph {
+                        id: "reverse-query-link".to_owned(),
+                        body: String::new(),
+                        links: vec![candidate.clone()],
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    };
+                    evaluate_node(&expanded, &synthetic, themagraphs)
+                })
+                .then(|| NamedQueryMatch { name, query })
+        })
+        .collect())
 }
 
 fn expand_named_queries(
@@ -201,6 +290,7 @@ fn expand_named_queries(
                 Box::new(expanded_definition),
             )
         }
+        QueryNode::Regex(pattern) => QueryNode::Regex(pattern.clone()),
         QueryNode::And(left, right) => QueryNode::And(
             Box::new(expand_named_queries(left, definitions, expanding)),
             Box::new(expand_named_queries(right, definitions, expanding)),
@@ -332,6 +422,7 @@ fn flatten_query(node: &QueryNode, themagraphs: &[Themagraph]) -> QueryNode {
         ),
         QueryNode::Not(inner) => QueryNode::Not(Box::new(flatten_query(inner, themagraphs))),
         QueryNode::Value(value) => QueryNode::Value(value.clone()),
+        QueryNode::Regex(pattern) => QueryNode::Regex(pattern.clone()),
     }
 }
 
@@ -372,6 +463,11 @@ fn evaluate_node(
             .links
             .iter()
             .any(|link| link.eq_ignore_ascii_case(value)),
+        QueryNode::Regex(pattern) => RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()
+            .map(|regex| themagraph.links.iter().any(|link| regex.is_match(link)))
+            .unwrap_or(false),
         QueryNode::And(left, right) => {
             evaluate_node(left, themagraph, all_themagraphs)
                 && evaluate_node(right, themagraph, all_themagraphs)
@@ -392,8 +488,9 @@ fn evaluate_node(
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_intralinks_from_text, filter_themagraphs, normalize_link_text, parse_query,
-        regex_filter_tags, regex_filter_themagraphs,
+        extract_intralinks_from_text, filter_themagraphs, named_queries_matching_link,
+        normalize_link_text, parse_named_query_definition, parse_query, regex_filter_tags,
+        regex_filter_themagraphs,
     };
     use crate::models::Themagraph;
     use chrono::Utc;
@@ -435,9 +532,39 @@ mod tests {
     }
 
     #[test]
+    fn filters_intralinks_with_regex_query_values() {
+        let themagraphs = vec![
+            tg("craft", "body", &["craft notes"]),
+            tg("music", "body", &["music notes"]),
+        ];
+        let matches = filter_themagraphs(&themagraphs, "[[~craft.*]]");
+        assert_eq!(
+            matches
+                .iter()
+                .map(|themagraph| themagraph.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["craft"]
+        );
+    }
+
+    #[test]
+    fn parses_named_query_definition_from_its_body() {
+        let (name, query, _) =
+            parse_named_query_definition("\n  [[craft arts]] = [[craft]] && [[arts]]  \n")
+                .expect("named query definition should parse");
+        assert_eq!(name, "craft arts");
+        assert_eq!(query, "[[craft]] && [[arts]]");
+        assert!(parse_named_query_definition("[[alias]] = [[craft]]\nextra").is_none());
+    }
+
+    #[test]
     fn expands_named_queries_while_preserving_the_alias() {
         let themagraphs = vec![
-            tg("definition", "[[craft]] && [[arts]]", &["craft arts"]),
+            tg(
+                "definition",
+                "[[craft arts]] = [[craft]] && [[arts]]",
+                &["craft arts", "craft", "arts"],
+            ),
             tg("underlying", "content", &["craft", "arts"]),
             tg("unrelated", "content", &["music"]),
         ];
@@ -452,9 +579,9 @@ mod tests {
     }
 
     #[test]
-    fn ignores_one_link_themagraphs_with_invalid_query_bodies() {
+    fn ignores_invalid_named_query_definition_bodies() {
         let themagraphs = vec![
-            tg("invalid", "not a query", &["alias"]),
+            tg("invalid", "[[alias]] not a query", &["alias"]),
             tg("alias", "content", &["alias"]),
         ];
         let matches = filter_themagraphs(&themagraphs, "[[alias]]");
@@ -464,6 +591,56 @@ mod tests {
                 .map(|themagraph| themagraph.id.as_str())
                 .collect::<Vec<_>>(),
             vec!["invalid", "alias"]
+        );
+    }
+
+    #[test]
+    fn finds_named_queries_that_match_a_link() {
+        let themagraphs = vec![
+            tg(
+                "direct",
+                "[[craft alias]] = [[craft]]",
+                &["craft alias", "craft"],
+            ),
+            tg(
+                "compound",
+                "[[craft and arts]] = [[craft]] && [[arts]]",
+                &["craft and arts", "craft", "arts"],
+            ),
+            tg(
+                "unrelated",
+                "[[music alias]] = [[music]]",
+                &["music alias", "music"],
+            ),
+        ];
+        let matches = named_queries_matching_link(&themagraphs, "[[craft]]");
+        assert_eq!(
+            matches
+                .into_iter()
+                .map(|item| item.name)
+                .collect::<Vec<_>>(),
+            vec!["craft alias"]
+        );
+    }
+
+    #[test]
+    fn reverse_lookup_accepts_regex_link_patterns() {
+        let themagraphs = vec![
+            tg(
+                "direct",
+                "[[craft alias]] = [[~craft.*]]",
+                &["craft alias", "craft"],
+            ),
+            tg("other", "content", &["craft notes"]),
+        ];
+        let matches = super::named_queries_matching_link_pattern(&themagraphs, "craft.*", true)
+            .expect("regex should be valid");
+        assert_eq!(
+            matches
+                .into_iter()
+                .map(|item| item.name)
+                .collect::<Vec<_>>(),
+            vec!["craft alias"]
         );
     }
 

@@ -9,7 +9,13 @@
   <body>
     <main class="page">
       <section class="hero">
-        <p class="eyebrow">Rust + SQLite</p>
+        <div class="brand">
+          <img class="brand-logo" src="/static/rhizoid-logo.webp" alt="Spreading earthmoss rhizoid" />
+          <div>
+            <p class="eyebrow">Rust + SQLite</p>
+            <p class="attribution">Logo: <a href="https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/202210_spreading_earthmoss_rhizoid.svg/960px-202210_spreading_earthmoss_rhizoid.svg.png" rel="noreferrer">Spreading earthmoss rhizoid</a></p>
+          </div>
+        </div>
         <h1>Rhizomatic Themagraph Server</h1>
         <p class="lede">Store themagraphs, manage intralinks, and run rhizomatic queries from a browser or JSON API.</p>
       </section>
@@ -90,6 +96,7 @@
           <label for="link-query">Fuzzy search intralinks</label>
           <input id="link-query" name="link_query" type="search" value="{{ link_query }}" placeholder="Search intralinks" autofocus />
           <label class="checkbox"><input type="checkbox" name="named_only" value="true" {% if named_only %}checked{% endif %} /> Named queries only</label>
+          <label class="checkbox"><input type="checkbox" name="link_regex" value="true" {% if link_regex %}checked{% endif %} /> Regex search</label>
           <button type="submit">Filter links</button>
         </form>
       </section>

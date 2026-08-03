@@ -1,13 +1,15 @@
 use crate::config::Config;
 use crate::models::{
-    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, QueryRequest,
-    QueryResponse, RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm,
-    UpdateThemagraph,
+    CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, LinkSearchParams,
+    QueryRequest, QueryResponse, RegexQueryRequest, RenderTemplateRequest, RenderTemplateResponse,
+    ReverseQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
 };
 use crate::query::{
-    filter_themagraphs, named_query_names, parse_query, regex_filter_tags, regex_filter_themagraphs,
+    filter_themagraphs, named_queries_matching_link_pattern, named_query_names,
+    parse_named_query_definition, regex_filter_tags, regex_filter_themagraphs,
 };
 use crate::store::Store;
+use crate::template::render_template as render_rhizomatic_template;
 use askama::Template;
 use axum::{
     Form, Json, Router,
@@ -17,6 +19,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use regex::RegexBuilder;
 use serde::Deserialize;
 use serde_json::json;
 use std::{env, net::SocketAddr, sync::Arc};
@@ -60,6 +63,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(query_themagraphs).post(query_themagraphs_post),
         )
         .route("/query/regex", post(query_themagraphs_regex))
+        .route("/render", post(render_template_document))
+        .route("/reverse-query", post(reverse_query))
         .route("/themagraphs/uuid/{id}", get(get_themagraph_by_uuid))
         .route("/links", get(list_links))
         .route("/links/named-queries", get(list_named_query_links))
@@ -132,8 +137,9 @@ async fn index(
     };
     let link_query = params.link_query.unwrap_or_default();
     let named_only = params.named_only.unwrap_or(false);
+    let link_regex = params.link_regex.unwrap_or(false);
     let links = if active_tab == "links" {
-        list_link_results(&themagraphs, &link_query, named_only)
+        list_link_results(&themagraphs, &link_query, named_only, link_regex)?
     } else {
         Vec::new()
     };
@@ -174,6 +180,7 @@ async fn index(
         links,
         link_query,
         named_only,
+        link_regex,
     })
 }
 
@@ -181,7 +188,8 @@ fn list_link_results(
     themagraphs: &[crate::models::Themagraph],
     query: &str,
     named_only: bool,
-) -> Vec<LinkResult> {
+    regex: bool,
+) -> Result<Vec<LinkResult>, AppError> {
     let named_queries = named_query_names(themagraphs)
         .into_iter()
         .map(|name| name.to_lowercase())
@@ -195,15 +203,32 @@ fn list_link_results(
         .collect::<Vec<_>>();
     links.sort_by_key(|link| link.to_lowercase());
     links.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    let regex = if regex && !query.trim().is_empty() {
+        Some(
+            RegexBuilder::new(query)
+                .case_insensitive(true)
+                .build()
+                .map_err(|error| {
+                    AppError::BadRequest(format!("invalid intralink regex: {error}"))
+                })?,
+        )
+    } else {
+        None
+    };
 
-    links
+    let results = links
         .into_iter()
         .filter_map(|name| {
             let is_named_query = named_queries.contains(&name.to_lowercase());
             if named_only && !is_named_query {
                 return None;
             }
-            if !query.trim().is_empty() && !fuzzy_matches(&name, query) {
+            if !query.trim().is_empty()
+                && !regex
+                    .as_ref()
+                    .map(|regex| regex.is_match(&name))
+                    .unwrap_or_else(|| fuzzy_matches(&name, query))
+            {
                 return None;
             }
             Some(LinkResult {
@@ -211,7 +236,8 @@ fn list_link_results(
                 is_named_query,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    Ok(results)
 }
 
 fn fuzzy_matches(value: &str, query: &str) -> bool {
@@ -271,7 +297,8 @@ async fn create_named_query_from_form(
     } else {
         format!("[[{name}]]")
     };
-    if parse_query(query).is_err() {
+    let body = format!("{link_name} = {query}");
+    if parse_named_query_definition(&body).is_none() {
         return Err(AppError::BadRequest(
             "named query must contain a valid rhizomatic query".to_owned(),
         ));
@@ -279,8 +306,8 @@ async fn create_named_query_from_form(
     state
         .store
         .create_themagraph(CreateThemagraph {
-            body: query.to_owned(),
-            links: vec![link_name],
+            body,
+            links: vec![],
         })
         .await?;
     Ok(Redirect::to("/"))
@@ -353,16 +380,30 @@ async fn list_tags(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Tag>>,
     Ok(Json(state.store.list_tags().await?))
 }
 
-async fn list_links(State(state): State<Arc<AppState>>) -> Result<Json<Vec<LinkResult>>, AppError> {
+async fn list_links(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<LinkSearchParams>,
+) -> Result<Json<Vec<LinkResult>>, AppError> {
     let themagraphs = state.store.list_themagraphs().await?;
-    Ok(Json(list_link_results(&themagraphs, "", false)))
+    Ok(Json(list_link_results(
+        &themagraphs,
+        params.query.as_deref().unwrap_or_default(),
+        params.named_only.unwrap_or(false),
+        params.regex.unwrap_or(false),
+    )?))
 }
 
 async fn list_named_query_links(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<LinkSearchParams>,
 ) -> Result<Json<Vec<LinkResult>>, AppError> {
     let themagraphs = state.store.list_themagraphs().await?;
-    Ok(Json(list_link_results(&themagraphs, "", true)))
+    Ok(Json(list_link_results(
+        &themagraphs,
+        params.query.as_deref().unwrap_or_default(),
+        true,
+        params.regex.unwrap_or(false),
+    )?))
 }
 
 async fn create_tag(
@@ -448,6 +489,40 @@ async fn query_themagraphs_regex(
         query: payload.pattern,
         matches,
     }))
+}
+
+async fn render_template_document(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RenderTemplateRequest>,
+) -> Result<Json<RenderTemplateResponse>, AppError> {
+    if payload.template.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "template must not be empty".to_owned(),
+        ));
+    }
+    if payload.query.trim().is_empty() {
+        return Err(AppError::BadRequest("query must not be empty".to_owned()));
+    }
+    let themagraphs = state.store.list_themagraphs().await?;
+    let document = render_rhizomatic_template(&payload, &themagraphs);
+    Ok(Json(RenderTemplateResponse {
+        document,
+        query: payload.query,
+        title: payload.title,
+    }))
+}
+
+async fn reverse_query(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ReverseQueryRequest>,
+) -> Result<Json<Vec<crate::models::NamedQueryMatch>>, AppError> {
+    if payload.link.trim().is_empty() {
+        return Err(AppError::BadRequest("link must not be empty".to_owned()));
+    }
+    let themagraphs = state.store.list_themagraphs().await?;
+    let matches = named_queries_matching_link_pattern(&themagraphs, &payload.link, payload.regex)
+        .map_err(|error| AppError::BadRequest(error.message))?;
+    Ok(Json(matches))
 }
 
 async fn query_tags_regex(

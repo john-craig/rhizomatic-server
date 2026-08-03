@@ -6,12 +6,17 @@ It provides:
 
 - JSON CRUD endpoints for themagraphs and their intralinks
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
-- Named-query expansion for one-link themagraphs whose bodies are valid rhizomatic queries
+- Named-query expansion for themagraphs whose bodies use `[[query-name]] = <rhizomatic-query>` syntax; stored links do not define named queries
+- Rhizomatic template rendering with `title()`, `$query`, and `tasks(...)` expressions
+- Reverse lookup of named queries matching an intralink
+- Regex intralink matching via `[[~pattern]]` query values and regex-enabled link lookup
 - A tabbed web UI with query-driven Search, themagraph Create, and fuzzy-searchable Links views
 - Search can save a valid query as a named-query themagraph, and Links can be constrained to named queries
 - SQLite persistence so the dataset can live independently from vault markdown files
 - API-token authentication for the JSON API, configured from a server-side config file
 - A stdio-based MCP server executable that exposes the HTTP API as MCP tools
+
+The web UI uses the [Spreading earthmoss rhizoid](https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/202210_spreading_earthmoss_rhizoid.svg/960px-202210_spreading_earthmoss_rhizoid.svg.png) image as its logo.
 
 ## Why this exists
 
@@ -80,6 +85,7 @@ It runs as an stdio MCP server and exposes these tools:
 - `query_themagraphs_regex`
 - `list_links`
 - `list_named_query_links`
+- `reverse_query`
 - `list_tags`
 - `query_tags_regex`
 - `create_tag`
@@ -176,6 +182,39 @@ List every intralink, including whether it is a named query:
 curl \
   -H 'authorization: Bearer replace-with-a-long-random-token' \
   http://127.0.0.1:3000/api/links
+```
+
+### Rendering
+
+Render a template against server themagraphs:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/render \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{
+    "template": "# <% title() %>\n<% $query %>",
+    "query": "[[craft]]",
+    "title": "Craft Notes"
+  }'
+```
+
+Find named queries that match an intralink:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/reverse-query \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{"link":"[[craft]]"}'
+```
+
+Use regex matching for reverse lookup by setting `"regex": true`:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/reverse-query \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{"link":"craft.*","regex":true}'
 ```
 
 List only named-query intralinks:

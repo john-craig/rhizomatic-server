@@ -9,7 +9,13 @@
   <body>
     <main class="page">
       <section class="hero compact">
-        <p class="eyebrow">Themagraph</p>
+        <div class="brand">
+          <img class="brand-logo" src="/static/rhizoid-logo.webp" alt="Spreading earthmoss rhizoid" />
+          <div>
+            <p class="eyebrow">Themagraph</p>
+            <p class="attribution">Logo: <a href="https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/202210_spreading_earthmoss_rhizoid.svg/960px-202210_spreading_earthmoss_rhizoid.svg.png" rel="noreferrer">Spreading earthmoss rhizoid</a></p>
+          </div>
+        </div>
         <h1>{{ themagraph.id }}</h1>
         <p class="lede">Created {{ themagraph.created_at }}. Updated {{ themagraph.updated_at }}.</p>
         <p><a href="/">Back to search</a></p>
