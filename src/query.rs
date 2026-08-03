@@ -1,6 +1,6 @@
 use crate::models::Themagraph;
 use regex::{Regex, RegexBuilder};
-use std::sync::OnceLock;
+use std::{collections::HashMap, sync::OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryNode {
@@ -124,7 +124,12 @@ pub fn parse_query(input: &str) -> Result<QueryNode, QueryError> {
 }
 
 pub fn filter_themagraphs<'a>(themagraphs: &'a [Themagraph], query: &str) -> Vec<&'a Themagraph> {
-    match parse_query(query).map(|ast| flatten_query(&ast, themagraphs)) {
+    let named_queries = named_query_definitions(themagraphs);
+    match parse_query(query).map(|ast| {
+        let expanded =
+            expand_named_queries(&ast, &named_queries, &mut std::collections::HashSet::new());
+        flatten_query(&expanded, themagraphs)
+    }) {
         Ok(ast) => themagraphs
             .iter()
             .filter(|themagraph| evaluate_node(&ast, themagraph, themagraphs))
@@ -145,6 +150,64 @@ pub fn filter_themagraphs<'a>(themagraphs: &'a [Themagraph], query: &str) -> Vec
                 })
                 .collect()
         }
+    }
+}
+
+fn named_query_definitions(themagraphs: &[Themagraph]) -> HashMap<String, QueryNode> {
+    themagraphs
+        .iter()
+        .filter(|themagraph| themagraph.links.len() == 1)
+        .filter_map(|themagraph| {
+            let body = themagraph.body.trim();
+            if body.is_empty() {
+                return None;
+            }
+            parse_query(body)
+                .ok()
+                .map(|definition| (themagraph.links[0].to_lowercase(), definition))
+        })
+        .collect()
+}
+
+fn expand_named_queries(
+    node: &QueryNode,
+    definitions: &HashMap<String, QueryNode>,
+    expanding: &mut std::collections::HashSet<String>,
+) -> QueryNode {
+    match node {
+        QueryNode::Value(value) => {
+            let key = value.to_lowercase();
+            let Some(definition) = definitions.get(&key) else {
+                return node.clone();
+            };
+            if !expanding.insert(key.clone()) {
+                return node.clone();
+            }
+            let expanded_definition = expand_named_queries(definition, definitions, expanding);
+            expanding.remove(&key);
+            QueryNode::Or(
+                Box::new(QueryNode::Value(value.clone())),
+                Box::new(expanded_definition),
+            )
+        }
+        QueryNode::And(left, right) => QueryNode::And(
+            Box::new(expand_named_queries(left, definitions, expanding)),
+            Box::new(expand_named_queries(right, definitions, expanding)),
+        ),
+        QueryNode::Or(left, right) => QueryNode::Or(
+            Box::new(expand_named_queries(left, definitions, expanding)),
+            Box::new(expand_named_queries(right, definitions, expanding)),
+        ),
+        QueryNode::Not(inner) => QueryNode::Not(Box::new(expand_named_queries(
+            inner,
+            definitions,
+            expanding,
+        ))),
+        QueryNode::Expansion(inner) => QueryNode::Expansion(Box::new(expand_named_queries(
+            inner,
+            definitions,
+            expanding,
+        ))),
     }
 }
 
@@ -358,6 +421,39 @@ mod tests {
             "[[programming rhizomatic server]] && [[rhizomatic]]",
         );
         assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn expands_named_queries_while_preserving_the_alias() {
+        let themagraphs = vec![
+            tg("definition", "[[craft]] && [[arts]]", &["craft arts"]),
+            tg("underlying", "content", &["craft", "arts"]),
+            tg("unrelated", "content", &["music"]),
+        ];
+        let matches = filter_themagraphs(&themagraphs, "[[craft arts]]");
+        assert_eq!(
+            matches
+                .iter()
+                .map(|themagraph| themagraph.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["definition", "underlying"]
+        );
+    }
+
+    #[test]
+    fn ignores_one_link_themagraphs_with_invalid_query_bodies() {
+        let themagraphs = vec![
+            tg("invalid", "not a query", &["alias"]),
+            tg("alias", "content", &["alias"]),
+        ];
+        let matches = filter_themagraphs(&themagraphs, "[[alias]]");
+        assert_eq!(
+            matches
+                .iter()
+                .map(|themagraph| themagraph.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["invalid", "alias"]
+        );
     }
 
     #[test]

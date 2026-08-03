@@ -6,6 +6,7 @@ It provides:
 
 - JSON CRUD endpoints for themagraphs and their intralinks
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
+- Named-query expansion for one-link themagraphs whose bodies are valid rhizomatic queries
 - A tabbed web UI with query-driven Search, themagraph Create, and fuzzy-searchable Links views
 - Search can save a valid query as a named-query themagraph, and Links can be constrained to named queries
 - SQLite persistence so the dataset can live independently from vault markdown files
