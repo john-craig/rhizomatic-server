@@ -7,6 +7,8 @@ It provides:
 - JSON CRUD endpoints for themagraphs and their intralinks
 - Rhizomatic query evaluation with `[[link]]`, `&&`, `||`, `!`, `*[[expansion]]`, and parentheses
 - Named-query expansion for one-link themagraphs whose bodies are valid rhizomatic queries
+- Rhizomatic template rendering with `title()`, `$query`, and `tasks(...)` expressions
+- Reverse lookup of named queries matching an intralink
 - A tabbed web UI with query-driven Search, themagraph Create, and fuzzy-searchable Links views
 - Search can save a valid query as a named-query themagraph, and Links can be constrained to named queries
 - SQLite persistence so the dataset can live independently from vault markdown files
@@ -176,6 +178,30 @@ List every intralink, including whether it is a named query:
 curl \
   -H 'authorization: Bearer replace-with-a-long-random-token' \
   http://127.0.0.1:3000/api/links
+```
+
+### Rendering
+
+Render a template against server themagraphs:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/render \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{
+    "template": "# <% title() %>\n<% $query %>",
+    "query": "[[craft]]",
+    "title": "Craft Notes"
+  }'
+```
+
+Find named queries that match an intralink:
+
+```sh
+curl -X POST http://127.0.0.1:3000/api/reverse-query \
+  -H 'authorization: Bearer replace-with-a-long-random-token' \
+  -H 'content-type: application/json' \
+  -d '{"link":"[[craft]]"}'
 ```
 
 List only named-query intralinks:

@@ -43,6 +43,33 @@ pub struct QueryRequest {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RenderTemplateRequest {
+    pub template: String,
+    #[serde(default)]
+    pub query: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenderTemplateResponse {
+    pub document: String,
+    pub query: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReverseQueryRequest {
+    pub link: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedQueryMatch {
+    pub name: String,
+    pub query: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegexQueryRequest {
     pub pattern: String,
     #[serde(default)]

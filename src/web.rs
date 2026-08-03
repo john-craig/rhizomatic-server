@@ -1,13 +1,15 @@
 use crate::config::Config;
 use crate::models::{
     CreateTag, CreateThemagraph, DetailTemplate, IndexTemplate, LinkResult, QueryRequest,
-    QueryResponse, RegexQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm,
-    UpdateThemagraph,
+    QueryResponse, RegexQueryRequest, RenderTemplateRequest, RenderTemplateResponse,
+    ReverseQueryRequest, SearchParams, SearchResult, Tag, ThemagraphForm, UpdateThemagraph,
 };
 use crate::query::{
-    filter_themagraphs, named_query_names, parse_query, regex_filter_tags, regex_filter_themagraphs,
+    filter_themagraphs, named_queries_matching_link, named_query_names, parse_query,
+    regex_filter_tags, regex_filter_themagraphs,
 };
 use crate::store::Store;
+use crate::template::render_template as render_rhizomatic_template;
 use askama::Template;
 use axum::{
     Form, Json, Router,
@@ -60,6 +62,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(query_themagraphs).post(query_themagraphs_post),
         )
         .route("/query/regex", post(query_themagraphs_regex))
+        .route("/render", post(render_template_document))
+        .route("/reverse-query", post(reverse_query))
         .route("/themagraphs/uuid/{id}", get(get_themagraph_by_uuid))
         .route("/links", get(list_links))
         .route("/links/named-queries", get(list_named_query_links))
@@ -448,6 +452,41 @@ async fn query_themagraphs_regex(
         query: payload.pattern,
         matches,
     }))
+}
+
+async fn render_template_document(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RenderTemplateRequest>,
+) -> Result<Json<RenderTemplateResponse>, AppError> {
+    if payload.template.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "template must not be empty".to_owned(),
+        ));
+    }
+    if payload.query.trim().is_empty() {
+        return Err(AppError::BadRequest("query must not be empty".to_owned()));
+    }
+    let themagraphs = state.store.list_themagraphs().await?;
+    let document = render_rhizomatic_template(&payload, &themagraphs);
+    Ok(Json(RenderTemplateResponse {
+        document,
+        query: payload.query,
+        title: payload.title,
+    }))
+}
+
+async fn reverse_query(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ReverseQueryRequest>,
+) -> Result<Json<Vec<crate::models::NamedQueryMatch>>, AppError> {
+    if payload.link.trim().is_empty() {
+        return Err(AppError::BadRequest("link must not be empty".to_owned()));
+    }
+    let themagraphs = state.store.list_themagraphs().await?;
+    Ok(Json(named_queries_matching_link(
+        &themagraphs,
+        &payload.link,
+    )))
 }
 
 async fn query_tags_regex(

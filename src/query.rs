@@ -1,4 +1,4 @@
-use crate::models::Themagraph;
+use crate::models::{NamedQueryMatch, Themagraph};
 use regex::{Regex, RegexBuilder};
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -177,6 +177,38 @@ pub fn named_query_names(themagraphs: &[Themagraph]) -> std::collections::HashSe
             !themagraph.body.trim().is_empty() && parse_query(themagraph.body.trim()).is_ok()
         })
         .map(|themagraph| themagraph.links[0].clone())
+        .collect()
+}
+
+pub fn named_queries_matching_link(themagraphs: &[Themagraph], link: &str) -> Vec<NamedQueryMatch> {
+    let normalized_link = normalize_link_text(link);
+    if normalized_link.is_empty() {
+        return Vec::new();
+    }
+    let definitions = named_query_definitions(themagraphs);
+    let synthetic = Themagraph {
+        id: "reverse-query-link".to_owned(),
+        body: String::new(),
+        links: vec![normalized_link.clone()],
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    themagraphs
+        .iter()
+        .filter(|themagraph| themagraph.links.len() == 1)
+        .filter_map(|themagraph| {
+            let definition = definitions.get(&themagraph.links[0].to_lowercase())?;
+            let expanded = expand_named_queries(
+                definition,
+                &definitions,
+                &mut std::collections::HashSet::new(),
+            );
+            evaluate_node(&expanded, &synthetic, themagraphs).then(|| NamedQueryMatch {
+                name: themagraph.links[0].clone(),
+                query: themagraph.body.clone(),
+            })
+        })
         .collect()
 }
 
@@ -392,8 +424,8 @@ fn evaluate_node(
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_intralinks_from_text, filter_themagraphs, normalize_link_text, parse_query,
-        regex_filter_tags, regex_filter_themagraphs,
+        extract_intralinks_from_text, filter_themagraphs, named_queries_matching_link,
+        normalize_link_text, parse_query, regex_filter_tags, regex_filter_themagraphs,
     };
     use crate::models::Themagraph;
     use chrono::Utc;
@@ -464,6 +496,23 @@ mod tests {
                 .map(|themagraph| themagraph.id.as_str())
                 .collect::<Vec<_>>(),
             vec!["invalid", "alias"]
+        );
+    }
+
+    #[test]
+    fn finds_named_queries_that_match_a_link() {
+        let themagraphs = vec![
+            tg("direct", "[[craft]]", &["craft alias"]),
+            tg("compound", "[[craft]] && [[arts]]", &["craft and arts"]),
+            tg("unrelated", "[[music]]", &["music alias"]),
+        ];
+        let matches = named_queries_matching_link(&themagraphs, "[[craft]]");
+        assert_eq!(
+            matches
+                .into_iter()
+                .map(|item| item.name)
+                .collect::<Vec<_>>(),
+            vec!["craft alias"]
         );
     }
 
