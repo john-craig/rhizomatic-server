@@ -36,14 +36,20 @@ body {
 }
 
 .brand {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.title-row {
+  --title-size: clamp(2.2rem, 5vw, 4rem);
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
 .brand-logo {
-  width: 5rem;
-  height: 5rem;
+  width: calc(var(--title-size) * 1.1);
+  height: calc(var(--title-size) * 1.1);
   object-fit: contain;
   border-radius: 18px;
   background: #000;
@@ -62,11 +68,16 @@ body {
 
 .hero h1 {
   margin: 0.2rem 0;
-  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-size: var(--title-size);
+  line-height: 1.1;
 }
 
 .hero.compact h1 {
-  font-size: clamp(1.6rem, 4vw, 2.5rem);
+  font-size: var(--title-size);
+}
+
+.hero.compact .title-row {
+  --title-size: clamp(1.6rem, 4vw, 2.5rem);
 }
 
 .eyebrow {
