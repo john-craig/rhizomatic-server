@@ -16,7 +16,7 @@ It provides:
 - API-token authentication for the JSON API, configured from a server-side config file
 - A stdio-based MCP server executable that exposes the HTTP API as MCP tools
 
-The web UI uses the [Spreading earthmoss rhizoid](https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/202210_spreading_earthmoss_rhizoid.svg/960px-202210_spreading_earthmoss_rhizoid.svg.png) image as its logo.
+The web UI uses the rhizoid image as its favicon.
 
 ## Why this exists
 
