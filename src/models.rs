@@ -139,6 +139,7 @@ pub struct IndexTemplate {
     pub themagraphs: Vec<SearchResult>,
     pub total_themagraphs: usize,
     pub links: Vec<LinkResult>,
+    pub autocomplete_links: Vec<LinkResult>,
     pub link_query: String,
     pub named_only: bool,
     pub link_regex: bool,
