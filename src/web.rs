@@ -138,6 +138,7 @@ async fn index(
     let link_query = params.link_query.unwrap_or_default();
     let named_only = params.named_only.unwrap_or(false);
     let link_regex = params.link_regex.unwrap_or(false);
+    let autocomplete_links = list_link_results(&themagraphs, "", false, false)?;
     let links = if active_tab == "links" {
         list_link_results(&themagraphs, &link_query, named_only, link_regex)?
     } else {
@@ -178,6 +179,7 @@ async fn index(
         total_themagraphs: matches.len(),
         themagraphs: matches,
         links,
+        autocomplete_links,
         link_query,
         named_only,
         link_regex,
