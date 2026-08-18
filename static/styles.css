@@ -47,6 +47,15 @@ body {
   gap: 1rem;
 }
 
+.brand-logo {
+  width: auto;
+  height: calc(var(--title-size) * 1.1);
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 18px;
+  background: #000;
+}
+
 .hero h1,
 .panel h2 {
   font-family: "IBM Plex Serif", "Source Serif 4", serif;
